@@ -1,0 +1,14 @@
+import numpy as np
+
+A = np.array([
+    [1, 2],
+    [3, 4]
+
+])
+
+b = np.array([8, 18])
+
+
+
+print(A.shape)
+print(b.shape)

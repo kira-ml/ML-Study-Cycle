@@ -11,7 +11,7 @@ def determinant_2x2(matrix):
     """
     return matrix[0, 0] * matrix[1, 1] - matrix[0, 1] * matrix[1, 0]
 
-def determinant_3x3(matrix):
+def determinant_3x3(matrix
     """
     Computes the determinant of a 3x3 matrix using cofactor expansion along the first row.
     The formula expands as:
