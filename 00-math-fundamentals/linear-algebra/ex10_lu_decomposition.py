@@ -13,7 +13,7 @@ n = A.shape[0]
 
 # Initialize L as an identity matrix of size n x n
 # This will be populated during elimination to represent the multipliers used in row operations
-L = np.eye(n)
+L = np.eye(n)/z
 
 # Initialize U as a copy of A; U will be transformed into an upper triangular matrix through row operations
 U = A.copy()
