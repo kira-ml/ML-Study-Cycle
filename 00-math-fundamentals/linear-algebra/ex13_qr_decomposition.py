@@ -28,6 +28,6 @@ for i in range(n):
 
 print("Reconstructed A:", Q @ R)
 print("Original A:", A)
-print("Difference:" A - Q @ R)
+print("Difference:", A - Q @ R)
 
 print("Q.T @ Q:", Q.T @ Q)
