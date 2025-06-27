@@ -23,8 +23,8 @@ m, n = A.shape  # m: number of rows, n: number of columns
 # Initialize matrices Q and R
 # Q will store the orthonormal basis vectors (same shape as A)
 # R will store the upper triangular matrix (n x n since A has n columns)
-Q = np.zeros((m, n))
-R = np.zeros((n, n))
+Q = np.empty((m, n))
+R = np.zeros((n, n), dtype=A.dtype)
 
 # Step 2: Classical Gram-Schmidt Orthogonalization
 # For each column of A, we subtract projections onto the previous orthonormal vectors
@@ -36,16 +36,16 @@ for i in range(n):
 
     # Subtract projections onto previously computed Q vectors
     for j in range(i):
-        # Compute the projection scalar
-        R[j, i] = np.dot(Q[:, j], A[:, i])
-        # Remove the component in the direction of Q[:, j]
+        R[j, i] = np.dot(Q[:, j], v)
         v -= R[j, i] * Q[:, j]
 
-    # Compute the norm of the orthogonalized vector
-    R[i, i] = np.linalg.norm(v)
+    norm_v = np.linalg.norm(v)
+    assert norm_v > 1e-10, f"Column {i} is linearly dependent"
 
-    # Normalize to get the i-th orthonormal vector
-    Q[:, i] = v / R[i, i]
+    R[i, i] = norm_v
+    Q[:, i] = v / norm_v
+
+
 
 # Step 3: Validation
 
@@ -54,7 +54,10 @@ A_reconstructed = Q @ R
 
 print("Reconstructed A (Q @ R):\n", A_reconstructed)
 print("\nOriginal A:\n", A)
-print("\nDifference (A - Q @ R):\n", A - A_reconstructed)
 
-# Verify that Q is truly orthonormal: Q.T @ Q should be the identity matrix
-print("\nQ.T @ Q (should be identity):\n", Q.T @ Q)
+recon_error = np.linalg.norm(A - A_reconstructed, 'fro') / np.linalg.norm(A, 'fro')
+print(f"\nRelative reconstruction error: {recon_error:.2e}")
+
+ortho_error = np.linalg.norm(Q.T @ Q - np.eye(n), 'fro')
+print(f"\nQ.T @ Q (should be identity):\n{Q.T @ Q}")
+print(f"Orthogonality error (Frobenius norm): {ortho_error:.2e}")
