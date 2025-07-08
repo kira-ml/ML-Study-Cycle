@@ -1,74 +1,121 @@
 import numpy as np
 
-# In this implementation, I demonstrate how to compute the eigenvalues and eigenvectors
-# of a 2x2 matrix using the characteristic polynomial and verify diagonalization.
-# This serves as a foundational technique in linear algebra and is applicable to many
-# machine learning algorithms, including PCA and spectral methods.
 
-# Define a 2x2 real-valued matrix A
-A = np.array([
-    [4, 1],
-    [2, 3]
-], dtype=float)
+def compute_trace_and_determinant(matrix: np.ndarray) -> tuple:
+    """
+    Compute the trace and determinant of a square matrix.
 
-print("Matrix A:\n", A)
+    Args:
+        matrix (np.ndarray): A square matrix (e.g., 2x2).
 
-# --- Step 1: Compute the trace and determinant of A ---
-# These are the coefficients of the characteristic polynomial:
-# λ² - (trace)λ + (determinant) = 0
-trace_A = np.trace(A)
-det_A = np.linalg.det(A)
+    Returns:
+        tuple: (trace, determinant)
+    """
+    trace = np.trace(matrix)
+    determinant = np.linalg.det(matrix)
+    return trace, determinant
 
-print("Trace of A:", trace_A)
-print("Determinant of A:", det_A)
 
-# --- Step 2: Solve the characteristic polynomial to get eigenvalues ---
-# The characteristic equation is: λ² - trace_A*λ + det_A = 0
-coeffs = [1, -trace_A, det_A]
-eigenvalues = np.roots(coeffs)
+def solve_characteristic_polynomial(trace: float, determinant: float) -> np.ndarray:
+    """
+    Solve the characteristic polynomial of a 2x2 matrix: λ² - trace·λ + det = 0
 
-print("Eigenvalues (roots of characteristic equation):", eigenvalues)
+    Args:
+        trace (float): Trace of the matrix.
+        determinant (float): Determinant of the matrix.
 
-# --- Step 3: Compute an eigenvector for the first eigenvalue ---
-lambda_1 = eigenvalues[0]  # Select the first eigenvalue
+    Returns:
+        np.ndarray: The eigenvalues (real or complex).
+    """
+    coeffs = [1, -trace, determinant]
+    return np.roots(coeffs)
 
-# Create identity matrix I and compute (A - λI)
-I = np.eye(2)
-A_minus_lambdaI = A - lambda_1 * I
-print(f"A - λ₁I:\n{A_minus_lambdaI}")
 
-# Solve (A - λI)v = 0 to find the eigenvector.
-# For a 2x2 matrix, we can manually construct an eigenvector.
-# Here, we solve for v = [1, x] by rearranging the first row of A - λI
-# Avoid division by zero by ensuring A[0,1] ≠ 0.
-v1 = np.array([1, (lambda_1 - A[0, 0]) / A[0, 1]])
+def compute_eigenvector(matrix: np.ndarray, eigenvalue: float) -> np.ndarray:
+    """
+    Compute a normalized eigenvector for a given eigenvalue of a 2x2 matrix.
 
-# Normalize the eigenvector to unit length
-v1_normalized = v1 / np.linalg.norm(v1)
+    Args:
+        matrix (np.ndarray): The original square matrix.
+        eigenvalue (float): The eigenvalue to compute the eigenvector for.
 
-print("Eigenvector for λ₁ (normalized):", v1_normalized)
+    Returns:
+        np.ndarray: A normalized eigenvector.
+    """
+    identity = np.eye(matrix.shape[0])
+    shifted_matrix = matrix - eigenvalue * identity
 
-# --- Step 4: Repeat for the second eigenvalue ---
-lambda_2 = eigenvalues[1]
-A_minus_lambdaI_2 = A - lambda_2 * I
-print(f"A - λ₂I:\n{A_minus_lambdaI_2}")
+    # Use the first row to construct an eigenvector [1, x] (if possible)
+    if np.abs(shifted_matrix[0, 1]) > 1e-8:
+        x = (eigenvalue - matrix[0, 0]) / matrix[0, 1]
+        vec = np.array([1, x])
+    else:
+        # Fall back to using second row if the first row is degenerate
+        x = (eigenvalue - matrix[1, 1]) / matrix[1, 0]
+        vec = np.array([x, 1])
 
-# Solve similarly for the second eigenvector
-v2 = np.array([1, (lambda_2 - A[0, 0]) / A[0, 1]])
-v2_normalized = v2 / np.linalg.norm(v2)
+    return vec / np.linalg.norm(vec)
 
-print("Eigenvector for λ₂ (normalized):", v2_normalized)
 
-# --- Step 5: Diagonalize the matrix ---
-# Construct diagonal matrix D with eigenvalues and matrix P with eigenvectors
-D = np.diag(eigenvalues)
-P = np.column_stack((v1_normalized, v2_normalized))
+def diagonalize_matrix(matrix: np.ndarray) -> tuple:
+    """
+    Diagonalize a 2x2 matrix by computing its eigenvalues and eigenvectors.
 
-print("Diagonal matrix D:\n", D)
-print("Eigenvector matrix P (columns are eigenvectors):\n", P)
+    Args:
+        matrix (np.ndarray): The input matrix (must be 2x2 and diagonalizable).
 
-# --- Step 6: Reconstruct A using its eigendecomposition ---
-# If A = P D P⁻¹, then we can reconstruct A as a consistency check
-A_reconstructed = P @ D @ np.linalg.inv(P)
+    Returns:
+        tuple: (D, P) where D is diagonal matrix of eigenvalues,
+               and P contains eigenvectors as columns.
+    """
+    trace, det = compute_trace_and_determinant(matrix)
+    eigenvalues = solve_characteristic_polynomial(trace, det)
 
-print("Reconstructed A (via P D P⁻¹):\n", A_reconstructed)
+    v1 = compute_eigenvector(matrix, eigenvalues[0])
+    v2 = compute_eigenvector(matrix, eigenvalues[1])
+
+    D = np.diag(eigenvalues)
+    P = np.column_stack((v1, v2))
+
+    return D, P, eigenvalues, [v1, v2]
+
+
+def reconstruct_matrix(P: np.ndarray, D: np.ndarray) -> np.ndarray:
+    """
+    Reconstruct the original matrix from its eigendecomposition.
+
+    Args:
+        P (np.ndarray): Matrix of eigenvectors.
+        D (np.ndarray): Diagonal matrix of eigenvalues.
+
+    Returns:
+        np.ndarray: Reconstructed matrix.
+    """
+    return P @ D @ np.linalg.inv(P)
+
+
+if __name__ == "__main__":
+    # Example matrix
+    A = np.array([[4, 1], [2, 3]], dtype=float)
+    print("Original Matrix A:\n", A)
+
+    # Diagonalization
+    D, P, eigenvalues, eigenvectors = diagonalize_matrix(A)
+
+    print("\nEigenvalues:")
+    print(eigenvalues)
+
+    print("\nNormalized Eigenvectors:")
+    for i, v in enumerate(eigenvectors, 1):
+        print(f"v{i} (for λ{i}):", v)
+
+    print("\nDiagonal Matrix D:")
+    print(D)
+
+    print("\nMatrix P (eigenvectors as columns):")
+    print(P)
+
+    # Reconstruct A using A = P D P⁻¹
+    A_reconstructed = reconstruct_matrix(P, D)
+    print("\nReconstructed A from eigendecomposition:")
+    print(A_reconstructed)
