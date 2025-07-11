@@ -1,95 +1,165 @@
-# 📘 ML Study Cycle
+# 📘 ML Study Cycle – Foundations of Machine Learning
 
-Welcome to my **ML Study Cycle** — a structured, personal roadmap covering the **fundamentals of machine learning** using Python.
-
-This repository is where I publicly track my learning journey, deepen my understanding of **mathematical foundations** (like linear algebra and calculus), and implement core **machine learning concepts** from scratch. Along the way, I share **well-documented code**, **hands-on exercises**, and **practical notes**.
-
-> ⚠️ **Note:** This repo is focused purely on learning, prototyping, and reinforcing foundational concepts. For full-scale projects and production-ready ML systems, check out my other repositories.
+A structured, hands-on study roadmap for mastering the **core foundations of machine learning**, with a focus on mathematical intuition, algorithmic understanding, and practical implementation using Python.
 
 ---
 
-## 🔍 What You'll Find in This Repository
+## 🧠 Overview
 
-* **📐 Mathematical Foundations**
-  Core concepts in linear algebra, calculus, and statistics tailored for machine learning.
+This repository documents a personal yet publicly shareable learning cycle aimed at **building a deep understanding of the foundational concepts in machine learning**. It features step-by-step topics, clean Python implementations, annotated exercises, and math-first explanations.
 
-* **🧠 Machine Learning Fundamentals**
-  From-scratch implementations of essential algorithms like linear regression and gradient descent.
+Whether you're a beginner, a student revisiting the basics, or a practitioner refreshing your skills, this repo is designed to serve as a **practical companion for studying ML theory and building strong fundamentals**.
 
-* **⚙️ End-to-End ML Workflow** *(coming soon)*
-  Includes data cleaning, preprocessing, feature engineering, model training, evaluation, and (eventually) deployment.
-
-* **🐍 Python Code Examples**
-  Clean, readable scripts using libraries like **NumPy** — ideal for experimentation and learning by doing.
-
-* **📝 Practical Exercises**
-  Annotated exercises and mini-projects to help reinforce your understanding and intuition.
+> 🔍 **Note**: This repository is focused on learning and experimentation. For production-ready systems and applied projects, refer to my other [repositories](https://github.com/kira-ml).
 
 ---
 
-## 👤 Who This Is For
+## 📚 Table of Contents
 
-This repository is ideal for:
-
-* **Beginners** exploring machine learning for the first time.
-* **Students** looking to solidify their understanding of ML theory and practice.
-* **Self-learners** who want to follow a clear, hands-on study roadmap.
-
-Whether you're just starting out or revisiting the basics, I hope this helps!
-
----
-
-## 🧪 Example Topics Covered
-
-* Vector and matrix operations
-* Linear regression from scratch
-* Gradient descent optimization
-* Data cleaning and preprocessing
-* Feature engineering
-* Model training and evaluation
-* Model deployment *(coming soon)*
+* [Overview](#-overview)
+* [Study Structure](#-study-structure)
+* [Topics Covered](#-topics-covered)
+* [How to Use This Repo](#-how-to-use-this-repo)
+* [Recommended Resources](#-recommended-resources)
+* [Contributing](#-contributing)
+* [License](#-license)
 
 ---
 
-## 🚀 How to Use This Repository
+## 🧭 Study Structure
 
-1. **Clone or download** the repository.
-2. Start with foundational folders like `/linear-algebra/`.
-3. Run the Python scripts, read through the comments, and experiment with the code to deepen your understanding.
+The learning cycle is organized into modular folders, each covering a key aspect of ML development—from the mathematical foundations to introductory deep learning.
 
----
-
-## ⚙️ Getting Started
-
-To run the code examples:
-
-```bash
-# Create a virtual environment
-python -m venv venv
-
-# Activate the environment (Windows)
-.\venv\Scripts\activate
-
-# Install required libraries
-pip install numpy
+```
+ML-Study-Cycle/
+├── 00-math-fundamentals/
+├── 01-python-for-ml/
+├── 02-fundamentals-of-machine-learning/
+├── 03-model-evaluation/
+├── 04-feature-engineering/
+├── 05-model-optimization/
+├── 06-intro-to-deep-learning/
+├── notebooks/
+├── utils/
 ```
 
-> You can expand the environment with more libraries as needed for upcoming topics.
+Each module includes:
+
+* 📘 Conceptual notes
+* 🐍 From-scratch code examples
+* 🧪 Exercises and experiments
+
+---
+
+## ✅ Topics Covered
+
+The repository covers foundational topics critical to understanding and implementing ML algorithms:
+
+### 📐 Mathematical Foundations
+
+* Vectors, matrices, and operations
+* Calculus for optimization (gradients, chain rule)
+* Probability and statistics for ML
+
+### 🐍 Python for ML
+
+* NumPy and array manipulation
+* Vectorized operations
+* Custom implementations without ML libraries
+
+### 🤖 Core ML Concepts
+
+* Linear regression from scratch
+* Gradient descent and cost functions
+* Overfitting, underfitting, and regularization
+
+### 🔍 Model Evaluation
+
+* Train/test split
+* Cross-validation
+* Performance metrics (MSE, accuracy, etc.)
+
+### 🛠️ Feature Engineering
+
+* Data preprocessing
+* Handling missing values
+* Scaling, encoding, and transformation
+
+### 🧪 Model Optimization
+
+* Hyperparameter tuning
+* Bias-variance tradeoff
+* Learning curves and validation strategies
+
+### 🧠 Introduction to Deep Learning
+
+* Neural network basics
+* Activation functions and layers
+* Forward/backward propagation (introductory level)
+
+---
+
+## 🚀 How to Use This Repo
+
+1. **Clone the repository**:
+
+   ```bash
+   git clone https://github.com/kira-ml/ML-Study-Cycle.git
+   cd ML-Study-Cycle
+   ```
+
+2. **Set up the environment**:
+
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: .\venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
+
+3. **Start with `00-math-fundamentals/`**
+   Proceed sequentially or dive into any topic of interest.
+
+4. **Run the scripts and read through the notebooks**
+   Explore the annotated code and practice exercises to deepen your understanding.
+
+> All examples prioritize transparency and clarity over abstraction. Minimal use of ML libraries ensures you learn how things work under the hood.
+
+---
+
+## 🔗 Recommended Resources
+
+These external references complement the material in this repo:
+
+* [CS229: Machine Learning – Stanford (Andrew Ng)](https://cs229.stanford.edu/)
+* [Mathematics for Machine Learning (book)](https://mml-book.github.io/)
+* [StatQuest with Josh Starmer (YouTube)](https://www.youtube.com/user/joshstarmer)
+* [3Blue1Brown – Essence of Linear Algebra](https://www.youtube.com/playlist?list=PLZHQObOWTQDNU6R1_67000Dx_ZCJB-3pi)
+* [fast.ai’s Practical Deep Learning for Coders](https://course.fast.ai/)
 
 ---
 
 ## 🤝 Contributing
 
-Suggestions and contributions are welcome!
-Feel free to:
+Contributions are welcome to improve the quality, clarity, and coverage of this study cycle.
 
-* Open an issue to report bugs or suggest improvements.
-* Submit a pull request to add new examples or refine existing ones.
+### You can:
+
+* 🐞 Report issues or suggest enhancements
+* 📁 Add new exercises or topics
+* 🧹 Refactor or clarify existing code or explanations
+
+Feel free to open an [issue](https://github.com/kira-ml/ML-Study-Cycle/issues) or submit a pull request.
 
 ---
 
-## 🎓 Final Note
+## 📄 License
 
-This repository is a personal learning initiative — a place to **practice, reflect, and grow** as a machine learning engineer. If it helps others along the way, that’s a bonus I’m grateful for.
+This project is licensed under the [MIT License](./LICENSE).
+Feel free to use, modify, and share with attribution.
 
-**Happy learning and coding!**
+---
+
+If you find this repository helpful in your ML journey, consider ⭐️ starring it to help others discover it!
+
+Happy learning,
+**@kira-ml** 👩‍💻
