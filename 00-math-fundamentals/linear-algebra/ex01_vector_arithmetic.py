@@ -1,39 +1,50 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
-# In this implementation, I demonstrate basic element-wise operations 
-# between two NumPy arrays, which represent mathematical vectors.
-# NumPy is a powerful library for numerical computing in Python, and 
-# its array operations are optimized for performance and simplicity.
+# Define vectors (2D for visualization)
+vector_a = np.array([1, 2])
+vector_b = np.array([4, 5])
 
-# Define the first vector using a NumPy array.
-# This array serves as Vector A for subsequent operations.
-vector_a = np.array([1, 2, 3])
+# Perform element-wise operations using a dictionary for scalability
+operations = {
+    "A + B": vector_a + vector_b,
+    "A - B": vector_a - vector_b,
+    "A * B": vector_a * vector_b,
+    "A / B": vector_a / vector_b,
+}
 
-# Define the second vector (Vector B) in a similar fashion.
-vector_b = np.array([4, 5, 6])
-
-# Perform element-wise addition.
-# Each corresponding element from vector_a and vector_b is summed.
-vector_add = vector_a + vector_b
-
-# Perform element-wise subtraction.
-# Each element in vector_b is subtracted from the corresponding element in vector_a.
-vector_sub = vector_a - vector_b
-
-# Perform element-wise multiplication.
-# This operation multiplies corresponding elements of the two vectors.
-vector_mul = vector_a * vector_b
-
-# Perform element-wise division.
-# Each element in vector_a is divided by the corresponding element in vector_b.
-# This demonstrates how NumPy handles floating-point division between integer arrays.
-vector_div = vector_a / vector_b
-
-# Output each vector and the result of each operation to the console.
-# This allows us to verify that the operations produced the expected results.
+# Print results
 print("Vector A:", vector_a)
 print("Vector B:", vector_b)
-print("Addition (A + B):", vector_add)
-print("Subtraction (A - B):", vector_sub)
-print("Element-wise Multiplication (A * B):", vector_mul)
-print("Element-wise Division (A / B):", vector_div)
+for name, result in operations.items():
+    print(f"{name}: {result}")
+
+# --- Visualization (2D quiver plot) ---
+plt.figure(figsize=(8, 8))
+origin = np.zeros(2)
+
+# Colors mapped to each vector
+vectors = {
+    "Vector A": (vector_a, "r"),
+    "Vector B": (vector_b, "b"),
+    "A + B": (operations["A + B"], "g"),
+    "A - B": (operations["A - B"], "m"),
+}
+
+# Plot all vectors
+for label, (vec, color) in vectors.items():
+    plt.quiver(*origin, *vec, angles='xy', scale_units='xy', scale=1, color=color, label=label)
+
+# Set limits dynamically (extract only vectors, not colors)
+all_points = np.array([vec for vec, _ in vectors.values()])
+max_val = np.max(np.abs(all_points)) + 2
+plt.xlim(-max_val, max_val)
+plt.ylim(-max_val, max_val)
+
+plt.grid(True)
+plt.legend()
+plt.title('Vector Arithmetic Visualization')
+plt.xlabel('X')
+plt.ylabel('Y')
+plt.axis('equal')  # keep aspect ratio
+plt.show()

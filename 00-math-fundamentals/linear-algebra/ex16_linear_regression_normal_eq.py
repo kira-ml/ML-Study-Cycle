@@ -1,39 +1,53 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
-# In this example, I demonstrate how to perform linear regression using the Normal Equation.
-# The goal is to predict house prices based on square footage (a single input feature).
-
-# Define the feature matrix `X` representing the area (in square feet) of five properties.
+# --- Data ---
 X = np.array([[500], [1200], [1500], [1800], [2100]])
-
-# Define the target vector `y` representing the corresponding house prices.
 y = np.array([150000, 220000, 350000, 420000, 500000])
 
-# Display the raw input features and target values.
 print("Feature Matrix X: \n", X)
 print("Target vector y: \n", y)
 
-# To include the intercept (bias) term in the regression model, I prepend a column of ones to X.
-# This creates the augmented feature matrix `X_b` of shape (m, 2), where m is the number of samples.
+# Add bias term (intercept)
 X_b = np.c_[np.ones((X.shape[0], 1)), X]
-
 print("X with bias term: \n", X_b)
 
-# Compute the model parameters θ (theta) using the Normal Equation:
-# θ = (XᵀX)^(-1) Xᵀy
-# This closed-form solution minimizes the mean squared error between predictions and actual values.
+# Normal Equation solution
 theta = np.linalg.solve(X_b.T.dot(X_b), X_b.T.dot(y))
-
-# Display the learned parameters.
-# The first value represents the intercept; the second represents the coefficient for square footage.
 print("Computed Parameters (θ):\n", theta)
 
-# Define a function to make predictions using the learned model.
-# It accepts a new area value and the parameter vector θ, and returns the predicted price.
+# Prediction function
 def predict(area, theta):
-    # Augment the new input value with a bias term before applying the linear model.
     x_with_bias = np.c_[np.ones((1, 1)), np.array([[area]])]
     return x_with_bias.dot(theta)
 
-# Predict the price of a house with 1000 square feet using the trained model.
+# Example prediction
 predicted_price = predict(1000, theta)
+print(f"Predicted price for 1000 sq. ft: {predicted_price[0]:,.0f}")
+
+# --- Visualization ---
+plt.figure(figsize=(8, 6))
+
+# Scatter plot of actual data
+plt.scatter(X, y, color="blue", label="Actual Data", s=80)
+
+# Regression line
+x_line = np.linspace(X.min() - 200, X.max() + 200, 100).reshape(-1, 1)
+y_line = np.c_[np.ones((x_line.shape[0], 1)), x_line].dot(theta)
+plt.plot(x_line, y_line, color="red", linewidth=2, label="Regression Line")
+
+# Predicted point
+plt.scatter(1000, predicted_price, color="green", s=120, marker="X", label=f"Prediction (1000 sq.ft)")
+
+# Annotate theta values
+plt.text(600, 480000, f"Intercept θ₀ = {theta[0]:,.0f}\nSlope θ₁ = {theta[1]:,.2f}", 
+         fontsize=10, bbox=dict(facecolor="white", alpha=0.6))
+
+# Labels & legend
+plt.xlabel("Square Footage")
+plt.ylabel("House Price ($)")
+plt.title("Linear Regression using Normal Equation")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
