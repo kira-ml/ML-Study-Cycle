@@ -1,3 +1,4 @@
+# Author: kira-ml (GitHub)
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import Union, Optional
@@ -5,6 +6,22 @@ from typing import Union, Optional
 # --- Original functions (unchanged) ---
 
 def vector_dot(a: np.ndarray, b: np.ndarray) -> float:
+    """
+    Compute dot product between two 1D vectors.
+    
+    In ML contexts, the dot product measures similarity between vectors.
+    For unit vectors, this equals the cosine similarity.
+    
+    Args:
+        a: First vector (1D array)
+        b: Second vector (1D array)
+        
+    Returns:
+        float: Dot product value
+        
+    Raises:
+        ValueError: If inputs are not 1D or have mismatched shapes
+    """
     if a.ndim != 1 or b.ndim != 1:
         raise ValueError("Inputs must be 1D vectors")
     if a.shape != b.shape:
@@ -12,11 +29,44 @@ def vector_dot(a: np.ndarray, b: np.ndarray) -> float:
     return float(a @ b)
 
 def vector_outer(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """
+    Compute outer product between two 1D vectors.
+    
+    In ML, outer products are used in attention mechanisms and covariance calculations.
+    Result matrix M[i,j] = a[i] * b[j].
+    
+    Args:
+        a: First vector (1D array)
+        b: Second vector (1D array)
+        
+    Returns:
+        np.ndarray: Outer product matrix of shape (len(a), len(b))
+        
+    Raises:
+        ValueError: If inputs are not 1D
+    """
     if a.ndim != 1 or b.ndim != 1:
         raise ValueError("Inputs must be 1D vectors")
     return np.outer(a, b)
 
 def batch_dot(A: np.ndarray, B: np.ndarray) -> np.ndarray:
+    """
+    Perform batch matrix multiplication across multiple matrix pairs.
+    
+    Essential for parallel processing in neural networks where we process
+    batches of samples simultaneously. Each batch element is multiplied
+    independently: result[i] = A[i] @ B[i].
+    
+    Args:
+        A: Batch of matrices with shape (batch_size, m, n)
+        B: Batch of matrices with shape (batch_size, n, p)
+        
+    Returns:
+        np.ndarray: Batch multiplication result of shape (batch_size, m, p)
+        
+    Raises:
+        ValueError: If inputs are not 3D or have incompatible shapes
+    """
     if A.ndim != 3 or B.ndim != 3:
         raise ValueError("Inputs must be 3D arrays")
     if A.shape[0] != B.shape[0]:
@@ -26,17 +76,62 @@ def batch_dot(A: np.ndarray, B: np.ndarray) -> np.ndarray:
     return A @ B
 
 def normalize_vectors(X: np.ndarray, axis: int = -1, eps: float = 1e-12) -> np.ndarray:
+    """
+    Normalize vectors to unit length (L2 normalization).
+    
+    Critical preprocessing step in ML to ensure feature scale invariance.
+    Prevents dominance of large-magnitude features in distance calculations.
+    Epsilon prevents division by zero for zero vectors.
+    
+    Args:
+        X: Input array of vectors
+        axis: Axis along which to compute norms
+        eps: Small epsilon to prevent division by zero
+        
+    Returns:
+        np.ndarray: Unit-normalized vectors
+    """
     norm = np.linalg.norm(X, axis=axis, keepdims=True)
+    # Clip small norms to prevent numerical instability and division by zero
     norm = np.where(norm < eps, 1.0, norm)
     return X / norm
 
 def matrix_rank_estimate(M: np.ndarray, tol: Optional[float] = None) -> int:
+    """
+    Estimate matrix rank using singular value decomposition.
+    
+    Rank indicates the number of linearly independent rows/columns.
+    In ML, low-rank matrices indicate redundant features or information loss.
+    Tolerance-based thresholding accounts for numerical precision limits.
+    
+    Args:
+        M: Input matrix
+        tol: Threshold for considering singular values as zero.
+             If None, computed based on machine epsilon and matrix size.
+             
+    Returns:
+        int: Estimated matrix rank
+    """
     if tol is None:
+        # Standard tolerance formula from numerical linear algebra
         tol = max(M.shape) * np.finfo(M.dtype).eps * np.linalg.norm(M, ord=2)
     s = np.linalg.svd(M, compute_uv=False)
     return np.sum(s > tol)
 
 def condition_number(M: np.ndarray) -> float:
+    """
+    Compute matrix condition number (ratio of largest to smallest singular value).
+    
+    Condition number measures sensitivity to numerical errors.
+    High condition numbers indicate ill-conditioned matrices that amplify
+    input errors, leading to unstable ML model training or inference.
+    
+    Args:
+        M: Input matrix
+        
+    Returns:
+        float: Condition number (inf if matrix is singular)
+    """
     s = np.linalg.svd(M, compute_uv=False)
     if np.any(s == 0):
         return float('inf')
@@ -170,7 +265,15 @@ def plot_matrix_analysis(M, name):
 # --- Enhanced Main Function ---
 
 def main():
-    """Test all functions with comprehensive examples and visualizations."""
+    """Test all functions with comprehensive examples and visualizations.
+    
+    Demonstrates fundamental linear algebra operations essential for ML:
+    - Dot products for similarity measurement
+    - Outer products for attention mechanisms
+    - Batch operations for parallel processing
+    - Normalization for feature scaling
+    - Matrix analysis for numerical stability
+    """
     
     print("🔢 1. Vector Dot Product")
     v1 = np.array([3.0, 4.0])  # Use 2D for easy plotting
