@@ -1,3 +1,4 @@
+# Author: kira-ml (GitHub)
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -6,24 +7,91 @@ np.random.seed(42)
 
 
 def relu(x: np.ndarray) -> np.ndarray:
-    """Apply ReLU activation function element-wise."""
+    """
+    Apply ReLU activation function element-wise.
+    
+    ReLU (Rectified Linear Unit) is the most widely used activation function
+    in deep learning due to its simplicity and effectiveness. It introduces
+    non-linearity while being computationally efficient and helping mitigate
+    the vanishing gradient problem.
+    
+    Mathematical form: f(x) = max(0, x)
+    
+    Args:
+        x: Input tensor of any shape
+        
+    Returns:
+        np.ndarray: ReLU activated tensor with same shape as input
+    """
     return np.maximum(0, x)
 
 
 def dense_forward(x: np.ndarray, weights: np.ndarray, bias: np.ndarray) -> np.ndarray:
-    """Perform dense/linear transformation: y = x @ weights + bias."""
+    """
+    Perform dense/linear transformation: y = x @ weights + bias.
+    
+    This is the fundamental operation in fully connected layers. The matrix
+    multiplication (x @ weights) performs linear combination of input features,
+    while the bias term allows the model to fit data that doesn't pass through
+    the origin.
+    
+    In ML frameworks, this is typically optimized using BLAS libraries for
+    maximum computational efficiency.
+    
+    Args:
+        x: Input tensor of shape (batch_size, input_dim)
+        weights: Weight matrix of shape (input_dim, output_dim)
+        bias: Bias vector of shape (output_dim,)
+        
+    Returns:
+        np.ndarray: Output tensor of shape (batch_size, output_dim)
+    """
     return x @ weights + bias
 
 
 def init_dense_layer(input_dim: int, output_dim: int):
-    """Initialize weights and biases for a dense layer using Xavier initialization."""
+    """
+    Initialize weights and biases for a dense layer using Xavier initialization.
+    
+    Xavier/Glorot initialization is crucial for maintaining signal variance
+    across layers during forward and backward propagation. It prevents neurons
+    from saturating and helps maintain gradient flow.
+    
+    Weights are sampled from normal distribution with std = sqrt(1/input_dim)
+    Biases are initialized to zero, which is standard practice.
+    
+    Args:
+        input_dim: Number of input features
+        output_dim: Number of output features
+        
+    Returns:
+        tuple: (weights, bias) initialized parameters
+    """
     weights = np.random.randn(input_dim, output_dim) / np.sqrt(input_dim)
     bias = np.zeros(output_dim)
     return weights, bias
 
 
 def mlp_forward(x, params):
-    """Forward pass through 3-layer MLP: affine → ReLU → affine → ReLU → affine."""
+    """
+    Forward pass through 3-layer MLP: affine → ReLU → affine → ReLU → affine.
+    
+    This represents a standard feedforward architecture commonly used in
+    deep learning. The ReLU activations after each hidden layer introduce
+    non-linearity, enabling the network to learn complex patterns.
+    
+    The architecture follows best practices:
+    - Alternating linear transformations and non-linear activations
+    - No activation on final layer (suitable for regression or pre-softmax)
+    - Proper parameter organization for easy access
+    
+    Args:
+        x: Input tensor of shape (batch_size, input_dim)
+        params: Dictionary containing layer parameters (W1, b1, W2, b2, W3, b3)
+        
+    Returns:
+        tuple: (output, intermediates) where intermediates contains all layer activations
+    """
     # Layer 1: affine + ReLU
     z1 = dense_forward(x, params['W1'], params['b1'])
     h1 = relu(z1)
@@ -39,7 +107,24 @@ def mlp_forward(x, params):
 
 
 def init_mlp(input_dim, hidden_dim, output_dim):
-    """Initialize parameters for a 3-layer MLP."""
+    """
+    Initialize parameters for a 3-layer MLP.
+    
+    Uses Xavier initialization for all layers to maintain proper signal
+    propagation. Hidden layers use ReLU activation, so the initialization
+    is scaled appropriately for the input dimension of each layer.
+    
+    Parameter organization follows standard ML framework conventions where
+    weights and biases are grouped by layer for easy access during training.
+    
+    Args:
+        input_dim: Dimension of input features
+        hidden_dim: Dimension of hidden layers
+        output_dim: Dimension of output
+        
+    Returns:
+        dict: Dictionary of initialized parameters
+    """
     return {
         'W1': np.random.randn(input_dim, hidden_dim) / np.sqrt(input_dim),
         'b1': np.zeros(hidden_dim),
@@ -51,17 +136,65 @@ def init_mlp(input_dim, hidden_dim, output_dim):
 
 
 def layer_param_count(W: np.ndarray, b: np.ndarray) -> int:
-    """Count total parameters in a layer (weights + biases)."""
+    """
+    Count total parameters in a layer (weights + biases).
+    
+    Essential for model complexity analysis and memory estimation.
+    In production ML systems, parameter counting helps with:
+    - Model size constraints for deployment
+    - Memory allocation planning
+    - Computational resource estimation
+    
+    Args:
+        W: Weight matrix
+        b: Bias vector
+        
+    Returns:
+        int: Total number of parameters in the layer
+    """
     return W.size + b.size
 
 
 def layer_flops(input_dim: int, output_dim: int) -> int:
-    """Calculate FLOPs for a dense layer: 2 * input_dim * output_dim."""
+    """
+    Calculate FLOPs for a dense layer: 2 * input_dim * output_dim.
+    
+    FLOP (Floating Point Operation) counting is crucial for performance
+    optimization in ML. For matrix multiplication (input_dim × output_dim):
+    - Each output element requires input_dim multiplications and (input_dim-1) additions
+    - Total ≈ 2 * input_dim * output_dim FLOPs
+    
+    This metric helps compare computational efficiency of different architectures.
+    
+    Args:
+        input_dim: Number of input features
+        output_dim: Number of output features
+        
+    Returns:
+        int: Approximate number of floating point operations
+    """
     return 2 * input_dim * output_dim
 
 
 def activation_stats(name: str, x: np.ndarray):
-    """Compute and return statistics for an activation tensor."""
+    """
+    Compute and return statistics for an activation tensor.
+    
+    Activation statistics are critical for diagnosing training issues:
+    - Mean and std help identify vanishing/exploding activations
+    - Sparsity indicates ReLU dead neuron problem
+    - Shape verification ensures proper tensor flow
+    
+    These metrics are commonly monitored in production ML systems to
+    detect model degradation or training instability.
+    
+    Args:
+        name: Layer name for identification
+        x: Activation tensor
+        
+    Returns:
+        dict: Dictionary containing statistical measures
+    """
     mean = x.mean()
     std = x.std()
     sparsity = np.mean(x == 0)  # Fraction of zero elements
@@ -75,7 +208,20 @@ def activation_stats(name: str, x: np.ndarray):
 
 
 def visualize_activations(activations_dict):
-    """Visualize activation distributions and sparsity patterns."""
+    """
+    Visualize activation distributions and sparsity patterns.
+    
+    Activation distribution visualization helps identify:
+    - Saturation (activations clustering at extremes)
+    - Dead neurons (excessive sparsity in ReLU layers)
+    - Proper initialization (mean ≈ 0, std ≈ 1 in early layers)
+    
+    Histograms provide intuitive understanding of activation behavior
+    across different network layers.
+    
+    Args:
+        activations_dict: Dictionary mapping layer names to activation tensors
+    """
     fig, axes = plt.subplots(2, 3, figsize=(18, 10))
     axes = axes.flatten()
     
@@ -109,7 +255,19 @@ def visualize_activations(activations_dict):
 
 
 def visualize_sparsity_patterns(activations_dict):
-    """Visualize sparsity patterns introduced by ReLU activations."""
+    """
+    Visualize sparsity patterns introduced by ReLU activations.
+    
+    ReLU sparsity patterns reveal important training dynamics:
+    - High sparsity may indicate dead neurons
+    - Structured sparsity patterns can suggest initialization issues
+    - Row-wise sparsity shows per-sample activation behavior
+    
+    This visualization is particularly useful for debugging ReLU-based networks.
+    
+    Args:
+        activations_dict: Dictionary containing ReLU activation tensors
+    """
     fig, axes = plt.subplots(1, 2, figsize=(15, 6))
     
     # Get ReLU activations
@@ -141,7 +299,24 @@ def visualize_sparsity_patterns(activations_dict):
 
 
 def visualize_model_complexity(params, input_dim, hidden_dim, output_dim, batch_size):
-    """Visualize parameter counts and FLOPs per layer."""
+    """
+    Visualize parameter counts and FLOPs per layer.
+    
+    Model complexity analysis is essential for:
+    - Deployment resource planning
+    - Architecture comparison
+    - Performance optimization
+    - Memory requirement estimation
+    
+    Log-scale visualization helps compare layers with vastly different scales.
+    
+    Args:
+        params: Dictionary of model parameters
+        input_dim: Input feature dimension
+        hidden_dim: Hidden layer dimension
+        output_dim: Output dimension
+        batch_size: Batch size for FLOP calculation
+    """
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
     
     # Parameter counts per layer
@@ -185,7 +360,19 @@ def visualize_model_complexity(params, input_dim, hidden_dim, output_dim, batch_
 
 
 def print_activation_summary(activations_dict):
-    """Print a summary table of activation statistics."""
+    """
+    Print a summary table of activation statistics.
+    
+    Tabular format provides quick overview of network health:
+    - Balanced mean/std indicate proper initialization
+    - Low sparsity in linear layers, controlled sparsity in ReLU layers
+    - Consistent shapes verify proper tensor flow
+    
+    This summary is invaluable for debugging and monitoring training.
+    
+    Args:
+        activations_dict: Dictionary mapping layer names to activation tensors
+    """
     print("\n" + "="*80)
     print("ACTIVATION STATISTICS SUMMARY")
     print("="*80)
@@ -200,7 +387,19 @@ def print_activation_summary(activations_dict):
 
 
 def main():
-    """Main function to demonstrate MLP forward pass with visualizations."""
+    """
+    Main function to demonstrate MLP forward pass with visualizations.
+    
+    This comprehensive example showcases:
+    1. Proper model initialization with Xavier scaling
+    2. Forward pass through multi-layer architecture
+    3. Activation analysis for training diagnostics
+    4. Model complexity profiling for deployment planning
+    5. Visualization of key ML concepts (sparsity, distributions, FLOPs)
+    
+    The workflow mirrors production ML pipelines where models are analyzed
+    for both functional correctness and computational efficiency.
+    """
     print("=== MLP Forward Pass Demonstration ===")
     
     # Model configuration
