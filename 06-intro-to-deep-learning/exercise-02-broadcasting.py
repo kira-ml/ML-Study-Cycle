@@ -1,3 +1,4 @@
+# Author: kira-ml (GitHub)
 """
 NumPy Broadcasting Operations for Machine Learning
 
@@ -25,14 +26,42 @@ import matplotlib.patches as patches
 
 
 def unsqueeze_to(tensor: np.ndarray, target_ndim: int) -> np.ndarray:
-    """Expand tensor dimensions to match target number of dimensions."""
+    """
+    Expand tensor dimensions to match target number of dimensions.
+    
+    In ML, we often need to add dimensions to enable broadcasting between
+    tensors of different ranks. This is commonly used when combining
+    batch dimensions with parameter tensors.
+    
+    Args:
+        tensor: Input tensor to expand
+        target_ndim: Desired number of dimensions
+        
+    Returns:
+        np.ndarray: Tensor with expanded dimensions
+    """
     while tensor.ndim < target_ndim:
         tensor = np.expand_dims(tensor, axis=0)
     return tensor
 
 
 def tile_like(source: np.ndarray, reference: np.ndarray) -> np.ndarray:
-    """Replicate source array to match the shape of reference array."""
+    """
+    Replicate source array to match the shape of reference array.
+    
+    Used in ML for broadcasting operations where we need to repeat
+    parameters across batch dimensions or feature channels.
+    
+    Args:
+        source: Array to replicate
+        reference: Target shape reference
+        
+    Returns:
+        np.ndarray: Replicated array matching reference shape
+        
+    Raises:
+        ValueError: If source and reference have different dimensions
+    """
     if source.ndim != reference.ndim:
         raise ValueError(f"Source and reference must have same number of dimensions. "
                          f"Got {source.ndim} and {reference.ndim}")
@@ -42,17 +71,56 @@ def tile_like(source: np.ndarray, reference: np.ndarray) -> np.ndarray:
 
 
 def fused_scale_shift(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
-    """Perform element-wise fused scaling and shifting operation: a * b + c."""
+    """
+    Perform element-wise fused scaling and shifting operation: a * b + c.
+    
+    This pattern is fundamental in ML - it's the core computation in batch
+    normalization, layer normalization, and many activation functions.
+    NumPy's vectorization makes this extremely efficient.
+    
+    Args:
+        a: Input tensor
+        b: Scale factors
+        c: Shift values
+        
+    Returns:
+        np.ndarray: Scaled and shifted result
+    """
     return a * b + c
 
 
 def permute_axes(tensor: np.ndarray, order: tuple) -> np.ndarray:
-    """Reorder tensor axes according to the specified permutation."""
+    """
+    Reorder tensor axes according to the specified permutation.
+    
+    Essential for aligning tensor dimensions when connecting different
+    layers in neural networks or preparing data for specific operations.
+    
+    Args:
+        tensor: Input tensor
+        order: New axis order (e.g., (2, 0, 1) to move last axis to front)
+        
+    Returns:
+        np.ndarray: Tensor with reordered axes
+    """
     return np.transpose(tensor, axes=order)
 
 
 def loop_multiply_add(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
-    """Multiply and add using explicit loops (educational implementation)."""
+    """
+    Multiply and add using explicit loops (educational implementation).
+    
+    This demonstrates what happens under the hood but is inefficient.
+    Included for pedagogical purposes to show why vectorization matters.
+    
+    Args:
+        a: Input tensor (2D)
+        b: Scale factors (1D)
+        c: Shift values (1D)
+        
+    Returns:
+        np.ndarray: Result of a * b + c computed with loops
+    """
     result = np.zeros_like(a)
     for i in range(a.shape[0]):
         for j in range(a.shape[1]):
@@ -61,7 +129,20 @@ def loop_multiply_add(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray
 
 
 def vectorized_multiply_add(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
-    """Multiply and add using vectorized NumPy operations (production implementation)."""
+    """
+    Multiply and add using vectorized NumPy operations (production implementation).
+    
+    Leverages NumPy's broadcasting to perform the same operation as loop_multiply_add
+    but much more efficiently. This is how you'd implement it in production ML code.
+    
+    Args:
+        a: Input tensor (2D)
+        b: Scale factors (1D)
+        c: Shift values (1D)
+        
+    Returns:
+        np.ndarray: Result of a * b + c computed with vectorization
+    """
     return a * b + c
 
 
