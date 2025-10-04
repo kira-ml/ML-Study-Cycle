@@ -69,7 +69,7 @@ class Adam:
 
         v_hat = self.v / (1 - self.beta2 ** self.t)
 
-        parameterrs -= self.lr * m_hat / (np.sqrt(v_hat) + self.epsilon)
+        parameters -= self.lr * m_hat / (np.sqrt(v_hat) + self.epsilon)
 
         return parameters
 
@@ -122,3 +122,34 @@ class Adam:
 
 
         return points_rmsprop, points_adam
+
+
+
+class LogisticRegression:
+    def __init__(self, input_dim):
+        # Initialize weights with small random values
+        self.weights = np.random.randn(input_dim) * 0.01
+        self.bias = 0.0
+        
+    def sigmoid(self, x):
+        """Squeeze values between 0 and 1 for probability"""
+        return 1 / (1 + np.exp(-np.clip(x, -250, 250)))  # clip for numerical stability
+    
+    def forward(self, X):
+        """Make predictions"""
+        linear_output = np.dot(X, self.weights) + self.bias
+        return self.sigmoid(linear_output)
+    
+    def compute_gradients(self, X, y, predictions):
+        """Calculate how wrong our predictions are"""
+        batch_size = X.shape[0]
+        error = predictions - y
+        dw = np.dot(X.T, error) / batch_size
+        db = np.sum(error) / batch_size
+        return dw, db
+    
+    def compute_loss(self, y_true, y_pred):
+        """Calculate how bad our predictions are"""
+        # Avoid log(0) which is undefined
+        y_pred = np.clip(y_pred, 1e-15, 1 - 1e-15)
+        return -np.mean(y_true * np.log(y_pred) + (1 - y_true) * np.log(1 - y_pred))
