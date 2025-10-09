@@ -1,155 +1,23 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.datasets import make_classification
-from sklearn.model_selection import train_test_split
-import time
-
-
-def rosenbrock_function(x, y, a=1, b=100):
-
-
-    return (a - x)**2 + b * (y - x**2)**2
-
-
-def rosenbrock_gradient(x, y, a=1, b=100):
-
-    df_dx = -2 * (a - x) - 4 * b * x * (y - x**2)
-    df_dy = 2 * b * (y - x**2)
-    return np.array([df_dx, df_dy])
+from typing import Callable, Tuple, Dict
 
 
 
-
-class RMSProp:
-    def __init__(self, learning_rate=0.01, beta=0.9, epsilon=1e-8):
-        self.lr = learning_rate
-        self.beta = beta
-        self.epsilon = epsilon
-        self.cache = None
-
-    def update(self, parameters, gradient):
-
-        if self.cache is None:
-            self.cache = np.zeros_like(parameters)
-            
-            
-            
-        self.cache = self.beta * self.cache + (1 - self.beta) * (gradients ** 2)\
-        
-
-        parameters -= self.lr * gradients / (np.sqrt(self.cache) +  self.epsilon)
-
-        return parameters
+def rosenbrock(x: np.ndarray, a: float = 1.0, b: float = 100.0) -> Tuple[float, np.ndarray]:
 
 
+    x1, x2 = x[0], x[1]
 
-class Adam:
-    def __init__(self, learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8):
-        self.lr = learning_rate
-        self.beta1 = beta1
-        self.beta2 = beta2
-        self.epsilon = epsilon
-        self.m = None
-        self.v = None
-        self.t = 0
+    loss = (a - x1)**2 + b * (x2 - x1**2)**2
 
-    def update(self, parameters, gradients):
-        if self.m is None:
-            self.m = np.zeros_like(parameters)
-            self.v = np.zeros_like(parameters)
-        
-        self.t += 1
+    grad = np.zeros(2)
+    grad[0] = -2 * (a - x1) - 4 * b * x1 * (x2 - x1**2)
+    grad[1] = 2 * b * (x2 - x1**2)
 
-        self.m = self.beta1 * self.m + (1 - self.beta1) * gradients
+    return loss, grad
 
 
-        self.v = self.beta2 * self.v + (1 - self.beta2) * (gradients ** 2)
-
-        m_hat = self.m / (1 - self.beta1 ** self.t)
-
-        v_hat = self.v / (1 - self.beta2 ** self.t)
-
-        parameters -= self.lr * m_hat / (np.sqrt(v_hat) + self.epsilon)
-
-        return parameters
-
-
-
-    
-    def test_optimizers_on_rosenbrock():
-
-
-        start_point = np.array([-1.5, 2.0])
-        target_point = np.array([1.0, 1.0])
-
-
-        rmsprop = RMSProp(learning_rate=0.01)
-        adam = Adam(learning_rate=0.1)
-
-
-        points_rmsprop = [start_point.copy()]
-        points_adam = [start_point.copy()]
-
-
-        current_rmsprop = start_point.copy()
-        current_adam = start_point.copy()
-
-
-
-        for step in range(1000):
-            grad_rmsprop = rosenbrock_gradient(current_rmsprop[0], current_rmsprop[1])
-
-            current_rmsprop = rmsprop.update(current_rmsprop, grad_rmsprop)
-
-            points_rmsprop.append(current_rmsprop.copy())
-
-
-
-            grad_adam = rosenbrock_gradient(current_adam[0], current_adam[1])
-            current_adam = adam.update(current_adam, grad_adam)
-            points_adam.append(current_adam.copy())
-
-
-
-            if step % 200 == 0:
-
-                loss_rmsprop = rosenbrock_function(current_rmsprop[0], current_rmsprop[1])
-
-
-                loss_adam = rosenbrock_function(current_adam[0], current_adam[1])
-
-                print(f"Step {step:4d}: RMSProp loss = {loss_rmsprop:.6f}, adam loss = {loss_adam:.6f}")
-
-
-        return points_rmsprop, points_adam
-
-
-
-class LogisticRegression:
-    def __init__(self, input_dim):
-        # Initialize weights with small random values
-        self.weights = np.random.randn(input_dim) * 0.01
-        self.bias = 0.0
-        
-    def sigmoid(self, x):
-        """Squeeze values between 0 and 1 for probability"""
-        return 1 / (1 + np.exp(-np.clip(x, -250, 250)))  # clip for numerical stability
-    
-    def forward(self, X):
-        """Make predictions"""
-        linear_output = np.dot(X, self.weights) + self.bias
-        return self.sigmoid(linear_output)
-    
-    def compute_gradients(self, X, y, predictions):
-        """Calculate how wrong our predictions are"""
-        batch_size = X.shape[0]
-        error = predictions - y
-        dw = np.dot(X.T, error) / batch_size
-        db = np.sum(error) / batch_size
-        return dw, db
-    
-    def compute_loss(self, y_true, y_pred):
-        """Calculate how bad our predictions are"""
-        # Avoid log(0) which is undefined
-        y_pred = np.clip(y_pred, 1e-15, 1 - 1e-15)
-        return -np.mean(y_true * np.log(y_pred) + (1 - y_true) * np.log(1 - y_pred))
+x_test = np.array([0.0, 0.0])
+loss, grad = rosenbrock(x_test)
+print(f"Rosenbrock at {x_test}: loss = {loss:.2f}, grad = {grad}")
