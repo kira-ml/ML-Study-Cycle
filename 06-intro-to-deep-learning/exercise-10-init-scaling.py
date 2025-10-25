@@ -84,4 +84,4 @@ def calculate_layer_statistics(activations: Dict[str, np.ndarray]) -> Dict[str, 
     stats = {}
     for layer_name, activation in activations.items():
         stats[layer_name] = (np.mean(activation), np.var(activation))
-    return stats
+    return stats 
