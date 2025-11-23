@@ -1,19 +1,37 @@
 """
-Exercise 19 — LSTM & GRU Internals
+Exercise 19 — LSTM & GRU Internals: Understanding Gated Architectures
 Filename: exercise-19-lstm-gru.py
 
-Core Concept: Understanding gated architectures (forget/update gates) and how they mitigate vanishing gradients.
+Core Concept: How gated recurrent architectures solve the vanishing gradient problem
+that plagues vanilla RNNs, enabling learning of long-range temporal dependencies.
 
-This implementation demonstrates:
-1. LSTM and GRU cell forward/backward passes (vectorized)
-2. Why gated architectures help with vanishing gradients
-3. Training stability comparison with vanilla RNN
+PROBLEM WITH VANILLA RNNS:
+- Gradients diminish exponentially as they propagate backward through time
+- This makes it impossible to learn dependencies beyond ~10 timesteps
+- The chain rule: ∂L/∂h_0 = ∂L/∂h_T * ∏_{t=1}^T ∂h_t/∂h_{t-1}
+- When |∂h_t/∂h_{t-1}| < 1 (tanh derivative ≤ 1), gradients vanish
 
-Key Insights:
-- Gates control information flow through time
-- Forget gates decide what to remember/forget
-- Update gates control how much new info to incorporate
-- Gates create paths where gradients don't vanish as quickly
+SOLUTION: GATED ARCHITECTURES
+- Gates control information flow, creating adaptive gradient highways
+- Forget/Update gates can learn to keep gradients flowing (gate ≈ 1)
+- Cell state in LSTM provides direct path with minimal transformations
+- This enables learning dependencies across hundreds of timesteps
+
+KEY COMPONENTS:
+1. LSTM: Input/Forget/Output gates + Cell state (long-term memory)
+2. GRU: Update/Reset gates (simplified, often performs similarly)
+3. Comparison with vanilla RNN to demonstrate the improvement
+
+MATHEMATICAL INSIGHT:
+- Vanilla RNN: h_t = tanh(W_hh·h_{t-1} + W_xh·x_t + b)
+- LSTM: c_t = f_t ⊙ c_{t-1} + i_t ⊙ g_t  (forget gate controls gradient flow!)
+- GRU: h_t = (1-z_t)·h_{t-1} + z_t·h̃_t  (update gate creates direct paths)
+
+LEARNING OBJECTIVES:
+- Understand why vanilla RNNs fail on long sequences
+- Master LSTM/GRU forward and backward passes
+- See how gates enable stable gradient propagation
+- Compare training stability across architectures
 """
 
 import numpy as np
@@ -23,192 +41,273 @@ import seaborn as sns
 
 class LSTMCell:
     """
-    Long Short-Term Memory Cell with complete vectorized implementation.
-    
-    Key components:
-    - Input gate: Controls what new information to store
-    - Forget gate: Controls what old information to discard  
-    - Output gate: Controls what information to output
-    - Cell state: Long-term memory that flows through time with minimal transformations
-    
-    Why LSTM mitigates vanishing gradients:
-    The cell state creates a "highway" where gradients can flow with minimal attenuation.
-    Forget gates can learn to keep values close to 1, allowing gradients to propagate.
+    Long Short-Term Memory Cell - The most successful gated RNN architecture.
+
+    LSTM was introduced by Hochreiter & Schmidhuber (1997) specifically to solve
+    the vanishing gradient problem in RNNs. The key innovation is the cell state
+    (c_t) which acts as a "conveyor belt" that can carry information across many
+    timesteps with minimal interference.
+
+    THREE TYPES OF GATES (each computed as sigmoid):
+    1. Forget Gate (f_t): Controls what information to discard from cell state
+       f_t = σ(W_f·[h_{t-1}, x_t] + b_f)
+       When f_t ≈ 1: Keep old information; When f_t ≈ 0: Forget old information
+
+    2. Input Gate (i_t): Controls what new information to store in cell state
+       i_t = σ(W_i·[h_{t-1}, x_t] + b_i)
+
+    3. Output Gate (o_t): Controls what information from cell state to output
+       o_t = σ(W_o·[h_{t-1}, x_t] + b_o)
+
+    CELL STATE UPDATE:
+    - Candidate values: g_t = tanh(W_g·[h_{t-1}, x_t] + b_g)  # Proposed new values
+    - Cell state: c_t = f_t ⊙ c_{t-1} + i_t ⊙ g_t             # Forget + Input
+    - Hidden state: h_t = o_t ⊙ tanh(c_t)                     # Output from cell
+
+    WHY THIS SOLVES VANISHING GRADIENTS:
+    - Cell state creates direct path: ∂c_t/∂c_{t-1} = f_t (can be ≈ 1)
+    - When forget gate = 1, gradients flow unchanged through time
+    - No tanh squashing on the main gradient path through cell state
     """
-    
+
     def __init__(self, input_size: int, hidden_size: int):
-        # Initialize all gates and transformations simultaneously
+        # Vectorized implementation: All gates computed in single matrix multiplication
         # Shape: [4 * hidden_size, input_size + hidden_size]
-        # Order: [input_gate, forget_gate, output_gate, candidate]
+        # Concatenated as: [i_gate, f_gate, o_gate, candidate]_weights
         self.W = np.random.randn(4 * hidden_size, input_size + hidden_size) * 0.01
         self.b = np.zeros((4 * hidden_size, 1))
-        
+
         self.hidden_size = hidden_size
+        # Cache stores intermediate values needed for backward pass
         self.cache = None
         
     def forward(self, x: np.ndarray, h_prev: np.ndarray, c_prev: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Forward pass for LSTM cell.
-        
+        Forward pass through LSTM cell.
+
+        Mathematical formulation:
+        1. Concatenate previous hidden state and current input: z = [h_{t-1}, x_t]
+        2. Compute all gates and candidate in single matrix multiplication:
+           [i_t, f_t, o_t, g_t] = W·z + b
+        3. Apply activations:
+           i_t = σ(i_t)    # Input gate: 0-1 (what to store)
+           f_t = σ(f_t)    # Forget gate: 0-1 (what to forget)
+           o_t = σ(o_t)    # Output gate: 0-1 (what to output)
+           g_t = tanh(g_t) # Candidate: -1 to 1 (proposed new values)
+        4. Update cell state: c_t = f_t ⊙ c_{t-1} + i_t ⊙ g_t
+        5. Update hidden state: h_t = o_t ⊙ tanh(c_t)
+
         Args:
-            x: Input of shape (input_size, batch_size)
-            h_prev: Previous hidden state (hidden_size, batch_size)
-            c_prev: Previous cell state (hidden_size, batch_size)
-            
+            x: Input at current timestep, shape (input_size, batch_size)
+            h_prev: Previous hidden state, shape (hidden_size, batch_size)
+            c_prev: Previous cell state, shape (hidden_size, batch_size)
+
         Returns:
-            h_next: Next hidden state
-            c_next: Next cell state
+            tuple: (h_t, c_t) - new hidden and cell states
         """
         batch_size = x.shape[1]
-        
+
         # Concatenate input and previous hidden state
         concat = np.vstack((h_prev, x))  # Shape: (hidden_size + input_size, batch_size)
-        
+
         # Compute all gates and candidate simultaneously
         gates = self.W @ concat + self.b  # Shape: (4 * hidden_size, batch_size)
-        
+
         # Split into individual components
         split_size = self.hidden_size
         input_gate = sigmoid(gates[0:split_size])
         forget_gate = sigmoid(gates[split_size:2*split_size])
         output_gate = sigmoid(gates[2*split_size:3*split_size])
         candidate = np.tanh(gates[3*split_size:4*split_size])
-        
+
         # Update cell state: c_t = f_t ⊙ c_{t-1} + i_t ⊙ g_t
         # This is the key equation - forget gate controls gradient flow
         c_next = forget_gate * c_prev + input_gate * candidate
-        
+
         # Compute next hidden state
         h_next = output_gate * np.tanh(c_next)
-        
+
         # Store intermediate values for backward pass
         self.cache = (x, h_prev, c_prev, input_gate, forget_gate, output_gate, candidate, c_next, concat)
-        
+
         return h_next, c_next
     
     def backward(self, dh_next: np.ndarray, dc_next: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
-        Backward pass for LSTM cell.
-        
+        Backward pass for LSTM cell - computing gradients through time.
+
+        This is where LSTM's gradient flow advantages become apparent:
+        - Cell state gradients flow through forget gate: ∂c_t/∂c_{t-1} = f_t
+        - When f_t ≈ 1, gradients propagate unchanged: dc_{t-1} = dc_t * f_t
+        - This creates the "highway" that prevents vanishing gradients
+
+        Mathematical derivation:
+        1. h_t = o_t ⊙ tanh(c_t) → ∂h_t/∂o_t = tanh(c_t), ∂h_t/∂c_t = o_t ⊙ (1-tanh²(c_t))
+        2. c_t = f_t ⊙ c_{t-1} + i_t ⊙ g_t → ∂c_t/∂c_{t-1} = f_t, ∂c_t/∂f_t = c_{t-1}, etc.
+        3. Gates use sigmoid: ∂σ(x)/∂x = σ(x)·(1-σ(x))
+        4. Candidate uses tanh: ∂tanh(x)/∂x = 1-tanh²(x)
+
         Args:
-            dh_next: Gradient from next hidden state
-            dc_next: Gradient from next cell state
-            
+            dh_next: Gradient from next hidden state (∂L/∂h_t)
+            dc_next: Gradient from next cell state (∂L/∂c_t)
+
         Returns:
-            dx: Gradient w.r.t input
-            dh_prev: Gradient w.r.t previous hidden state  
-            dc_prev: Gradient w.r.t previous cell state
+            dx: Gradient w.r.t input (∂L/∂x_t)
+            dh_prev: Gradient w.r.t previous hidden state (∂L/∂h_{t-1})
+            dc_prev: Gradient w.r.t previous cell state (∂L/∂c_{t-1})
         """
         # Retrieve cached values
         x, h_prev, c_prev, i_gate, f_gate, o_gate, candidate, c_next, concat = self.cache
-        
+
         # Gradient through output gate and tanh
         dtanh_c = dh_next * o_gate
         dc_next += dtanh_c * (1 - np.tanh(c_next) ** 2)
-        
+
         # Gradient through cell state update
-        dc_prev = dc_next * f_gate
+        dc_prev = dc_next * f_gate  # KEY: This is where gradient highway happens!
         df_gate = dc_next * c_prev
         di_gate = dc_next * candidate
         dcandidate = dc_next * i_gate
-        
+
         # Gate gradients through sigmoid
         di_gate_raw = di_gate * i_gate * (1 - i_gate)
         df_gate_raw = df_gate * f_gate * (1 - f_gate)
         do_gate_raw = dh_next * np.tanh(c_next) * o_gate * (1 - o_gate)
-        
+
         # Candidate gradient through tanh
         dcandidate_raw = dcandidate * (1 - candidate ** 2)
-        
+
         # Concatenate all gate gradients
         dgates = np.vstack((di_gate_raw, df_gate_raw, do_gate_raw, dcandidate_raw))
-        
+
         # Gradients for weights and biases
         self.dW = dgates @ concat.T
         self.db = np.sum(dgates, axis=1, keepdims=True)
-        
+
         # Gradient through concatenation
         dconcat = self.W.T @ dgates
-        
+
         # Split into hidden and input gradients
         dh_prev = dconcat[:self.hidden_size]
         dx = dconcat[self.hidden_size:]
-        
+
         return dx, dh_prev, dc_prev
 
 
 class GRUCell:
     """
-    Gated Recurrent Unit Cell - simplified gated architecture.
-    
-    Key components:
-    - Update gate: Controls how much to update hidden state (replaces LSTM's input/forget gates)
-    - Reset gate: Controls how much past information to use for new candidate
-    - Candidate activation: Proposed new hidden state value
-    
-    Why GRU mitigates vanishing gradients:
-    Update gate creates adaptive paths - when z_t ≈ 1, gradients flow directly through time.
-    Simpler than LSTM but often performs similarly.
+    Gated Recurrent Unit Cell - Simplified gated architecture by Cho et al. (2014).
+
+    GRU combines the forget and input gates of LSTM into a single "update gate",
+    making it computationally more efficient while maintaining similar performance.
+
+    TWO TYPES OF GATES:
+    1. Update Gate (z_t): Controls what to keep from previous hidden state
+       z_t = σ(W_z·[h_{t-1}, x_t] + b_z)
+       When z_t ≈ 1: Update hidden state completely (forget old)
+       When z_t ≈ 0: Keep previous hidden state (remember old)
+
+    2. Reset Gate (r_t): Controls what past information to use for new candidate
+       r_t = σ(W_r·[h_{t-1}, x_t] + b_r)
+       When r_t ≈ 1: Use all past information
+       When r_t ≈ 0: Ignore past information (reset memory)
+
+    HIDDEN STATE UPDATE:
+    - Candidate: h̃_t = tanh(W_h·[r_t ⊙ h_{t-1}, x_t] + b_h)  # Proposed new values
+    - Final: h_t = (1 - z_t) ⊙ h_{t-1} + z_t ⊙ h̃_t            # Interpolate old/new
+
+    WHY THIS SOLVES VANISHING GRADIENTS:
+    - Update gate creates direct path: ∂h_t/∂h_{t-1} = (1 - z_t) (can be ≈ 1)
+    - When update gate = 0, gradients flow unchanged: dh_{t-1} = dh_t * (1 - z_t)
+    - Simpler than LSTM but equally effective at maintaining gradient flow
+    - No separate cell state - hidden state serves both purposes
     """
-    
+
     def __init__(self, input_size: int, hidden_size: int):
-        # Update gate, reset gate, and candidate weights
-        self.W_z = np.random.randn(hidden_size, input_size + hidden_size) * 0.01
-        self.W_r = np.random.randn(hidden_size, input_size + hidden_size) * 0.01  
-        self.W_h = np.random.randn(hidden_size, input_size + hidden_size) * 0.01
-        
+        # Separate weight matrices for each gate and candidate
+        # More parameters than LSTM but simpler computation
+        self.W_z = np.random.randn(hidden_size, input_size + hidden_size) * 0.01  # Update gate
+        self.W_r = np.random.randn(hidden_size, input_size + hidden_size) * 0.01  # Reset gate
+        self.W_h = np.random.randn(hidden_size, input_size + hidden_size) * 0.01  # Candidate
+
         self.b_z = np.zeros((hidden_size, 1))
         self.b_r = np.zeros((hidden_size, 1))
         self.b_h = np.zeros((hidden_size, 1))
-        
+
         self.hidden_size = hidden_size
         self.cache = None
         
     def forward(self, x: np.ndarray, h_prev: np.ndarray) -> np.ndarray:
         """
-        Forward pass for GRU cell.
-        
+        Forward pass through GRU cell.
+
+        Mathematical formulation:
+        1. Concatenate previous hidden state and current input: z = [h_{t-1}, x_t]
+        2. Update gate: z_t = σ(W_z·z + b_z)    # How much to update (0-1)
+        3. Reset gate: r_t = σ(W_r·z + b_r)     # How much past info to use (0-1)
+        4. Candidate: h̃_t = tanh(W_h·[r_t ⊙ h_{t-1}, x_t] + b_h)  # Proposed new values
+        5. Final: h_t = (1 - z_t) ⊙ h_{t-1} + z_t ⊙ h̃_t          # Interpolate old/new
+
+        The key insight: Reset gate controls memory access, update gate controls adoption.
+        When r_t ≈ 0: Ignores past, acts like feedforward network
+        When z_t ≈ 0: Keeps old hidden state, preserves long-term memory
+        When z_t ≈ 1: Completely updates to candidate, allows learning new patterns
+
         Args:
-            x: Input of shape (input_size, batch_size)
-            h_prev: Previous hidden state (hidden_size, batch_size)
-            
+            x: Input at current timestep, shape (input_size, batch_size)
+            h_prev: Previous hidden state, shape (hidden_size, batch_size)
+
         Returns:
-            h_next: Next hidden state
+            h_next: New hidden state, shape (hidden_size, batch_size)
         """
         batch_size = x.shape[1]
         concat = np.vstack((h_prev, x))
-        
+
         # Update gate: how much to update hidden state
         z = sigmoid(self.W_z @ concat + self.b_z)
-        
+
         # Reset gate: how much past information to use
         r = sigmoid(self.W_r @ concat + self.b_r)
-        
+
         # Candidate hidden state using reset gate
         concat_reset = np.vstack((r * h_prev, x))
         h_candidate = np.tanh(self.W_h @ concat_reset + self.b_h)
-        
+
         # Final hidden state: interpolate between previous and candidate
         h_next = (1 - z) * h_prev + z * h_candidate
-        
+
         self.cache = (x, h_prev, z, r, h_candidate, concat, concat_reset)
         return h_next
     
     def backward(self, dh_next: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Backward pass for GRU cell.
-        
+        Backward pass for GRU cell - demonstrating gradient flow preservation.
+
+        The update gate creates the gradient highway:
+        h_t = (1 - z_t) ⊙ h_{t-1} + z_t ⊙ h̃_t
+        → ∂h_t/∂h_{t-1} = (1 - z_t) + [terms from h̃_t depending on r_t]
+
+        When z_t ≈ 0: ∂h_t/∂h_{t-1} ≈ 1 (direct gradient flow!)
+        When z_t ≈ 1: ∂h_t/∂h_{t-1} ≈ 0 (complete update, breaks old gradients)
+
+        This adaptive gating allows GRU to learn when to preserve gradients and when to reset.
+
+        Mathematical derivation:
+        1. h_t = (1-z_t)⊙h_{t-1} + z_t⊙h̃_t → ∂h_t/∂z_t = -(h_{t-1}-h̃_t), ∂h_t/∂h̃_t = z_t
+        2. h̃_t = tanh(W_h·[r_t⊙h_{t-1}, x_t] + b_h) → ∂h̃_t/∂r_t involves chain rule
+        3. Gates use sigmoid: ∂σ(x)/∂x = σ(x)·(1-σ(x))
+
         Args:
-            dh_next: Gradient from next hidden state
-            
+            dh_next: Gradient from next timestep (∂L/∂h_t)
+
         Returns:
-            dx: Gradient w.r.t input
-            dh_prev: Gradient w.r.t previous hidden state
+            dx: Gradient w.r.t input (∂L/∂x_t)
+            dh_prev: Gradient w.r.t previous hidden state (∂L/∂h_{t-1})
         """
         x, h_prev, z, r, h_candidate, concat, concat_reset = self.cache
         
-        # Gradient through final interpolation
-        dh_prev1 = dh_next * (1 - z)  # Direct path through h_prev
+        # Gradient through final interpolation: h_t = (1-z)*h_prev + z*h_candidate
+        dh_prev1 = dh_next * (1 - z)  # KEY: Direct gradient highway when z≈0!
         dz = dh_next * (h_candidate - h_prev)  # Through update gate
         
         dh_candidate = dh_next * z  # Through candidate
