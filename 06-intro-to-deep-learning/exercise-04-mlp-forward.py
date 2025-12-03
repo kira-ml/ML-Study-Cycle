@@ -1,253 +1,171 @@
 # Author: kira-ml (GitHub)
 # Educational Implementation: Multi-Layer Perceptron (MLP) with Analysis Tools
+
+# Import core libraries for numerical computation and visualization
+# NumPy provides efficient array operations - essential for ML
+# Matplotlib enables data visualization - crucial for understanding model behavior
 import numpy as np
 import matplotlib.pyplot as plt
 
-
+# Set random seed for reproducibility
+# In ML, reproducibility is crucial - same initialization leads to same results
 np.random.seed(42)
 
+# ============================================================================
+# ACTIVATION FUNCTION: ReLU
+# ============================================================================
 
 def relu(x: np.ndarray) -> np.ndarray:
     """
     Apply ReLU activation function element-wise.
-
-    ReLU (Rectified Linear Unit) is the most widely used activation function
-    in deep learning due to its simplicity and effectiveness. It introduces
-    non-linearity while being computationally efficient and helping mitigate
-    the vanishing gradient problem common in deep networks with sigmoid/tanh.
-
-    Mathematical form: f(x) = max(0, x)
-    - For positive inputs: f(x) = x (identity function)
-    - For negative inputs: f(x) = 0 (zero function)
-    - Derivative: f'(x) = 1 if x > 0, else 0 (non-differentiable at x=0)
-
-    Key advantages:
-    - Computationally efficient (no exponentials or divisions)
-    - Helps with gradient flow in deep networks (mitigates vanishing gradients)
-    - Biologically plausible (neurons fire or don't fire)
-
-    Key considerations:
-    - Can cause "dying ReLU" problem (neurons stuck at 0)
-    - Not zero-centered (can affect optimization dynamics)
-
-    Args:
-        x: Input tensor of any shape
-
-    Returns:
-        np.ndarray: ReLU activated tensor with same shape as input
+    
+    Think of ReLU as a gate: if input > 0, let it pass; otherwise block it.
+    This simple non-linearity is what allows neural networks to learn complex patterns.
     """
+    # max(0, x) is computationally efficient - no expensive exponentials like sigmoid
     return np.maximum(0, x)
 
+# ============================================================================
+# LAYER OPERATIONS
+# ============================================================================
 
 def dense_forward(x: np.ndarray, weights: np.ndarray, bias: np.ndarray) -> np.ndarray:
     """
     Perform dense/linear transformation: y = x @ weights + bias.
-
-    This is the fundamental operation in fully connected (dense) layers. The matrix
-    multiplication (x @ weights) computes linear combinations of input features
-    using learned weights. The bias term allows the model to fit data that doesn't
-    pass through the origin, adding an offset to each output dimension.
-
-    In mathematical terms:
-    - x: (batch_size, input_dim) - batch of input samples
-    - weights: (input_dim, output_dim) - learnable parameters
-    - bias: (output_dim,) - learnable bias vector
-    - Output: (batch_size, output_dim) - transformed batch
-
-    In ML frameworks, this is typically optimized using BLAS (Basic Linear Algebra Subprograms)
-    libraries for maximum computational efficiency. The @ operator in NumPy performs
-    efficient matrix multiplication using underlying optimized libraries.
-
-    Args:
-        x: Input tensor of shape (batch_size, input_dim)
-        weights: Weight matrix of shape (input_dim, output_dim)
-        bias: Bias vector of shape (output_dim,)
-
-    Returns:
-        np.ndarray: Output tensor of shape (batch_size, output_dim)
+    
+    This is the fundamental building block of neural networks:
+    - weights: learn how to combine input features
+    - bias: adds flexibility (like the intercept in linear regression)
+    - @ operator: matrix multiplication (combines features in linear way)
     """
+    # Matrix multiplication followed by bias addition
+    # x shape: (batch_size, input_features) - a batch of samples
+    # weights shape: (input_features, output_features) - learned patterns
+    # Result: each sample gets transformed to output_features dimension
     return x @ weights + bias
-
 
 def init_dense_layer(input_dim: int, output_dim: int):
     """
-    Initialize weights and biases for a dense layer using Xavier/Glorot initialization.
-
-    Xavier/Glorot initialization is crucial for maintaining signal variance
-    across layers during both forward and backward propagation. It prevents neurons
-    from saturating and helps maintain gradient flow, leading to more stable training.
-
-    The initialization strategy:
-    - Weights: sampled from normal distribution with std = sqrt(1/input_dim)
-    - Biases: initialized to zero (standard practice, as weights can learn the offset)
-
-    The variance scaling factor sqrt(1/input_dim) ensures that:
-    - Forward pass: signal variance is preserved across layers
-    - Backward pass: gradient variance is preserved across layers
-    This prevents the signal from exploding or vanishing as it propagates.
-
-    Alternative: For ReLU activations, He initialization (sqrt(2/input_dim)) often works better.
-
-    Args:
-        input_dim: Number of input features to the layer
-        output_dim: Number of output features from the layer
-
-    Returns:
-        tuple: (weights, bias) initialized parameters
+    Initialize weights and biases for a dense layer.
+    
+    Good initialization is crucial - think of it as starting your learning journey
+    from a good position rather than a random spot in the wilderness.
+    
+    Xavier initialization scales weights based on input dimension to prevent
+    signals from getting too big (exploding) or too small (vanishing) as they
+    pass through the network.
     """
+    # Weights: random values scaled by 1/sqrt(input_dim)
+    # Why divide by sqrt(input_dim)? To maintain consistent variance across layers
     weights = np.random.randn(input_dim, output_dim) / np.sqrt(input_dim)
+    
+    # Biases: initialized to zeros (common practice)
+    # Biases can learn offsets during training, starting at 0 is neutral
     bias = np.zeros(output_dim)
+    
     return weights, bias
 
+# ============================================================================
+# MULTI-LAYER PERCEPTRON (MLP) FUNCTIONS
+# ============================================================================
 
 def mlp_forward(x, params):
     """
-    Forward pass through 3-layer MLP: affine → ReLU → affine → ReLU → affine.
-
-    This represents a standard feedforward architecture commonly used in
-    deep learning. The architecture is:
-    Input → [Dense + ReLU] → [Dense + ReLU] → [Dense] → Output
-
-    The ReLU activations after each hidden layer introduce non-linearity,
-    enabling the network to learn complex, non-linear patterns. The final
-    layer has no activation (linear), which is typical for regression tasks
-    or when followed by a task-specific activation (e.g., softmax).
-
-    The architecture follows best practices:
-    - Alternating linear transformations (Dense) and non-linear activations (ReLU)
-    - Progressive dimensionality change (input → hidden → hidden → output)
-    - Proper parameter organization for easy access and gradient computation
-
-    Args:
-        x: Input tensor of shape (batch_size, input_dim)
-        params: Dictionary containing layer parameters (W1, b1, W2, b2, W3, b3)
-
-    Returns:
-        tuple: (output, intermediates) where intermediates contains all layer activations
-               intermediates = (x, z1, h1, z2, h2, output) for potential backprop use
+    Forward pass through 3-layer MLP: Input → [Linear + ReLU] → [Linear + ReLU] → Linear → Output.
+    
+    This is the "inference" step - passing data through the network to get predictions.
+    The pattern: Linear transform → Non-linearity → Linear transform → Non-linearity → Final linear
+    
+    Why ReLU after each linear layer? Without non-linearities, multiple linear layers
+    would collapse into a single linear layer (no added complexity).
     """
-    # Layer 1: Affine transformation (linear combination) + ReLU activation
-    z1 = dense_forward(x, params['W1'], params['b1'])  # Linear: W1*x + b1
-    h1 = relu(z1)                                      # Non-linear activation
+    # Layer 1: Linear combination + ReLU activation
+    # z1 represents pre-activation values (raw linear combination)
+    z1 = dense_forward(x, params['W1'], params['b1'])
+    # h1 represents post-activation values (after ReLU gating)
+    h1 = relu(z1)
 
-    # Layer 2: Affine transformation + ReLU activation
-    z2 = dense_forward(h1, params['W2'], params['b2']) # Linear: W2*h1 + b2
-    h2 = relu(z2)                                      # Non-linear activation
+    # Layer 2: Same pattern - building hierarchical features
+    # Each layer learns increasingly complex representations of the input
+    z2 = dense_forward(h1, params['W2'], params['b2'])
+    h2 = relu(z2)
 
-    # Layer 3: Final affine transformation (no activation - linear output)
-    output = dense_forward(h2, params['W3'], params['b3'])  # Linear: W3*h2 + b3
+    # Layer 3: Final linear layer (no activation)
+    # For regression tasks or when followed by task-specific activation (e.g., softmax)
+    output = dense_forward(h2, params['W3'], params['b3'])
 
+    # Return both final output and intermediate values
+    # Intermediate values are needed for backpropagation (calculating gradients)
     return output, (x, z1, h1, z2, h2, output)
-
 
 def init_mlp(input_dim, hidden_dim, output_dim):
     """
-    Initialize parameters for a 3-layer MLP with Xavier initialization.
-
-    This function sets up the weights and biases for a network with:
-    - Layer 1: input_dim → hidden_dim
-    - Layer 2: hidden_dim → hidden_dim (same hidden size)
-    - Layer 3: hidden_dim → output_dim
-
-    Uses Xavier initialization for all layers to maintain proper signal
-    propagation. The initialization is scaled appropriately for the input
-    dimension of each layer to prevent vanishing/exploding gradients.
-
-    Parameter organization follows standard ML framework conventions where
-    weights and biases are grouped by layer for easy access during training
-    and inference.
-
-    Args:
-        input_dim: Dimension of input features
-        hidden_dim: Dimension of hidden layers
-        output_dim: Dimension of output
-
-    Returns:
-        dict: Dictionary of initialized parameters {W1, b1, W2, b2, W3, b3}
+    Initialize parameters for a 3-layer MLP.
+    
+    Network architecture:
+    Input (input_dim) → Hidden1 (hidden_dim) → Hidden2 (hidden_dim) → Output (output_dim)
+    
+    Each layer gets its own weight matrix and bias vector, all properly initialized.
     """
     return {
-        'W1': np.random.randn(input_dim, hidden_dim) / np.sqrt(input_dim),     # Scale by input_dim
+        # Layer 1: Input to first hidden layer
+        'W1': np.random.randn(input_dim, hidden_dim) / np.sqrt(input_dim),
         'b1': np.zeros(hidden_dim),
-        'W2': np.random.randn(hidden_dim, hidden_dim) / np.sqrt(hidden_dim),   # Scale by hidden_dim
+        
+        # Layer 2: Hidden to hidden (same dimension)
+        'W2': np.random.randn(hidden_dim, hidden_dim) / np.sqrt(hidden_dim),
         'b2': np.zeros(hidden_dim),
-        'W3': np.random.randn(hidden_dim, output_dim) / np.sqrt(hidden_dim),   # Scale by hidden_dim
+        
+        # Layer 3: Hidden to output
+        'W3': np.random.randn(hidden_dim, output_dim) / np.sqrt(hidden_dim),
         'b3': np.zeros(output_dim),
     }
 
+# ============================================================================
+# ANALYSIS AND DIAGNOSTIC FUNCTIONS
+# ============================================================================
 
 def layer_param_count(W: np.ndarray, b: np.ndarray) -> int:
     """
-    Count total parameters in a dense layer (weights + biases).
-
-    Essential for model complexity analysis, memory estimation, and performance planning.
-    In production ML systems, parameter counting helps with:
-    - Model size constraints for deployment (e.g., mobile devices, edge computing)
-    - Memory allocation planning (GPU/CPU memory requirements)
-    - Computational resource estimation (training/inference time)
-    - Model selection and architecture comparison
-
-    Args:
-        W: Weight matrix of shape (input_dim, output_dim)
-        b: Bias vector of shape (output_dim,)
-
-    Returns:
-        int: Total number of parameters in the layer = W.size + b.size
+    Count total parameters in a dense layer.
+    
+    Parameters = weights + biases
+    More parameters = more capacity to learn, but also more risk of overfitting
+    and more computation/memory required.
     """
+    # Each weight and bias is a learnable parameter
+    # Total parameters = all elements in W + all elements in b
     return W.size + b.size
-
 
 def layer_flops(input_dim: int, output_dim: int) -> int:
     """
-    Calculate FLOPs (Floating Point Operations) for a dense layer: 2 * input_dim * output_dim.
-
-    FLOP counting is crucial for performance optimization in ML systems. For a dense layer
-    performing matrix multiplication (input_dim × output_dim):
-    - Each output element requires input_dim multiplications and (input_dim-1) additions
-    - Total ≈ input_dim * output_dim * 2 FLOPs (simplified approximation)
-    - Multiplication: input_dim * output_dim ops
-    - Addition: input_dim * output_dim ops (for bias and accumulation)
-
-    This metric helps compare computational efficiency of different architectures,
-    estimate inference latency, and optimize models for deployment constraints.
-
-    Args:
-        input_dim: Number of input features to the layer
-        output_dim: Number of output features from the layer
-
-    Returns:
-        int: Approximate number of floating point operations for one forward pass
+    Calculate FLOPs (Floating Point Operations) for a dense layer.
+    
+    FLOPs estimate computational cost. For each output element:
+    - Need input_dim multiplications (weight * input)
+    - Need input_dim-1 additions (summing products)
+    - Plus 1 addition for bias
+    Total ≈ 2 * input_dim * output_dim operations
+    
+    Why care? Helps understand if model will run fast enough on your hardware.
     """
+    # Simplified calculation: 2 operations per weight connection
     return 2 * input_dim * output_dim
-
 
 def activation_stats(name: str, x: np.ndarray):
     """
-    Compute and return statistics for an activation tensor.
-
-    Activation statistics are critical for diagnosing training issues and monitoring
-    model health during development and deployment:
-    - Mean and std help identify vanishing/exploding activations (should be stable)
-    - Sparsity indicates ReLU dead neuron problem (high sparsity is problematic)
-    - Shape verification ensures proper tensor flow and architecture integrity
-
-    These metrics are commonly monitored in production ML systems to
-    detect model degradation, training instability, or architectural bugs.
-
-    Args:
-        name: Descriptive name for the layer (for identification in logs)
-        x: Activation tensor from a specific layer
-
-    Returns:
-        dict: Dictionary containing statistical measures:
-              - 'name': Layer name
-              - 'mean': Average activation value
-              - 'std': Standard deviation of activations
-              - 'sparsity': Fraction of zero elements (important for ReLU)
-              - 'shape': Shape of the activation tensor
+    Compute statistics for an activation tensor.
+    
+    Monitoring these stats during training helps catch problems:
+    - Mean close to 0: good, network isn't biased
+    - Std around 1: good, activations aren't exploding/vanshing
+    - Sparsity: fraction of zeros (high sparsity in ReLU = many "dead" neurons)
     """
-    mean = x.mean()
-    std = x.std()
-    sparsity = np.mean(x == 0)  # Fraction of zero elements (key for ReLU layers)
+    # Calculate basic statistics
+    mean = x.mean()          # Average activation value
+    std = x.std()            # How spread out are the activations?
+    sparsity = np.mean(x == 0)  # Percentage of neurons outputting 0 (ReLU-specific)
+    
     return {
         'name': name,
         'mean': mean,
@@ -256,199 +174,167 @@ def activation_stats(name: str, x: np.ndarray):
         'shape': x.shape
     }
 
-
 def visualize_activations(activations_dict):
     """
-    Visualize activation distributions and sparsity patterns across network layers.
-
-    Activation distribution visualization helps identify:
-    - Saturation (activations clustering at extremes, common with sigmoid/tanh)
-    - Dead neurons (excessive sparsity in ReLU layers, sparsity > 50-70% is concerning)
-    - Proper initialization (mean ≈ 0, std ≈ 1 in early layers is ideal)
-    - Gradient flow issues (distributions changing drastically between layers)
-
-    Histograms provide intuitive understanding of activation behavior
-    across different network layers, which is crucial for debugging and optimization.
-
-    Args:
-        activations_dict: Dictionary mapping descriptive layer names to activation tensors
+    Visualize activation distributions across network layers.
+    
+    Histograms show how values are distributed - looking for:
+    - Normal-like distributions: good initialization
+    - All zeros or all large values: problematic
+    - Changing distributions across layers: expected (network transforming data)
     """
+    # Create 2x3 grid of subplots (for 6 layers in our MLP)
     fig, axes = plt.subplots(2, 3, figsize=(18, 10))
-    axes = axes.flatten()
-
-    # Layer names should correspond to keys in activations_dict
+    axes = axes.flatten()  # Convert 2D grid to 1D list for easy iteration
+    
+    # Get layer names from dictionary keys
     layer_names = list(activations_dict.keys())
-
+    
+    # Create histogram for each layer's activations
     for i, name in enumerate(layer_names):
         ax = axes[i]
         activation = activations_dict[name]
-
-        # Flatten activation for histogram (sample if too large for performance)
+        
+        # Flatten to 1D for histogram, sample if too large for performance
         flat_act = activation.flatten()
         if len(flat_act) > 1000:
             flat_act = np.random.choice(flat_act, size=1000, replace=False)
-
-        # Plot histogram to show distribution
+        
+        # Plot histogram
         ax.hist(flat_act, bins=50, alpha=0.7, color=plt.cm.Set1(i))
         ax.set_title(f'{name}\nShape: {activation.shape}')
         ax.set_xlabel('Activation Value')
         ax.set_ylabel('Frequency')
         ax.grid(True, alpha=0.3)
-
-        # Add computed statistics as text overlay
+        
+        # Add statistics as text on plot
         stats = activation_stats(name, activation)
         stats_text = f'μ={stats["mean"]:.3f}\nσ={stats["std"]:.3f}\nSparsity={stats["sparsity"]:.1%}'
         ax.text(0.05, 0.95, stats_text, transform=ax.transAxes,
-                verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-
+                verticalalignment='top', 
+                bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    
     plt.tight_layout()
     plt.suptitle('MLP Activation Distributions - Layer-by-Layer Analysis', y=1.02, fontsize=16)
     plt.show()
 
-
 def visualize_sparsity_patterns(activations_dict):
     """
-    Visualize sparsity patterns introduced by ReLU activations using heatmaps.
-
-    ReLU sparsity patterns reveal important training dynamics:
-    - High sparsity (>50%) may indicate dead neurons (neurons stuck at 0)
-    - Structured sparsity patterns can suggest initialization issues or poor training
-    - Row-wise sparsity shows per-sample activation behavior across neurons
-    - Column-wise sparsity shows neuron-wise activation across samples
-
-    This visualization is particularly useful for debugging ReLU-based networks
-    and understanding how information flows through the network.
-
-    Args:
-        activations_dict: Dictionary containing ReLU activation tensors (layers with ReLU)
+    Visualize sparsity patterns from ReLU activations.
+    
+    Heatmaps show which neurons are active (non-zero) for which samples.
+    Patterns can reveal:
+    - Dead neurons: always zero columns
+    - Rarely active neurons: mostly zero columns
+    - Sample-specific patterns: different rows activate different neurons
     """
-    # Identify ReLU layers (those with significant sparsity)
+    # Filter for ReLU layers only
     relu_layers = {k: v for k, v in activations_dict.items() if 'ReLU' in k}
+    
     if not relu_layers:
         print("No ReLU activation layers found for sparsity visualization.")
         return
-
+    
+    # Create subplots - one for each ReLU layer
     num_relu_layers = len(relu_layers)
     fig, axes = plt.subplots(1, num_relu_layers, figsize=(8*num_relu_layers, 6))
     if num_relu_layers == 1:
-        axes = [axes]
-
+        axes = [axes]  # Make it iterable even if single plot
+    
     for i, (name, activation) in enumerate(relu_layers.items()):
         ax = axes[i]
-
-        # Sample data if too large for efficient visualization
+        
+        # Sample data for visualization if too large
         vis_data = activation
         if activation.shape[0] > 50:  # Limit to first 50 samples
             vis_data = activation[:50, :]
-
-        # Create heatmap to visualize activation patterns
+        
+        # Create heatmap - blue intensity = activation strength
         im = ax.imshow(vis_data, cmap='Blues', aspect='auto', interpolation='nearest')
         ax.set_title(f'{name} - Sparsity Pattern\n'
                     f'Sparsity: {activation_stats(name, activation)["sparsity"]:.1%}')
         ax.set_xlabel('Neuron Index')
         ax.set_ylabel('Sample Index')
-
-        # Add colorbar to indicate activation value scale
+        
+        # Add colorbar legend
         cbar = plt.colorbar(im, ax=ax)
         cbar.set_label('Activation Value')
-
+    
     plt.tight_layout()
     plt.suptitle('ReLU Sparsity Patterns - Information Flow Analysis', y=1.02, fontsize=16)
     plt.show()
 
-
 def visualize_model_complexity(params, input_dim, hidden_dim, output_dim, batch_size):
     """
-    Visualize parameter counts and FLOPs per layer for model complexity analysis.
-
-    Model complexity analysis is essential for:
-    - Deployment resource planning (memory, compute, latency)
-    - Architecture comparison and selection
-    - Performance optimization and bottlenecks identification
-    - Memory requirement estimation for training/inference
-    - Understanding model capacity vs. generalization trade-off
-
-    Log-scale visualization helps compare layers with vastly different parameter/FLOP scales.
-
-    Args:
-        params: Dictionary of model parameters {W1, b1, W2, b2, W3, b3}
-        input_dim: Input feature dimension
-        hidden_dim: Hidden layer dimension
-        output_dim: Output dimension
-        batch_size: Batch size for FLOP calculation (affects per-batch computation)
+    Visualize parameter counts and FLOPs per layer.
+    
+    Two key metrics for model analysis:
+    1. Parameters: Memory/storage requirement, model capacity
+    2. FLOPs: Computational requirement, inference speed
+    
+    Helps answer: "Is this model too big for my application?"
     """
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
-
-    # Calculate parameter counts per layer
+    
+    # ===== LEFT PLOT: Parameter Counts =====
     param_counts = [
         layer_param_count(params['W1'], params['b1']),
         layer_param_count(params['W2'], params['b2']),
         layer_param_count(params['W3'], params['b3'])
     ]
     layer_names = ['Layer 1 (Input→Hidden)', 'Layer 2 (Hidden→Hidden)', 'Layer 3 (Hidden→Output)']
-
-    # Plot parameter counts
+    
     bars1 = ax1.bar(layer_names, param_counts, color=['skyblue', 'lightgreen', 'salmon'])
     ax1.set_title('Parameter Count per Layer\n(Model Size Analysis)')
     ax1.set_ylabel('Number of Parameters')
-    ax1.set_yscale('log')  # Log scale for better comparison
+    ax1.set_yscale('log')  # Log scale helps compare vastly different numbers
     ax1.tick_params(axis='x', rotation=45)
-
-    # Add value labels on bars
+    
+    # Add exact numbers on bars
     for bar, count in zip(bars1, param_counts):
         ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height(),
                 f'{count:,}', ha='center', va='bottom')
-
-    # Calculate FLOPs per layer (for one forward pass on a batch)
+    
+    # ===== RIGHT PLOT: FLOPs =====
+    # FLOPs scale with batch size - more samples = more computation
     flops = [
-        layer_flops(input_dim, hidden_dim) * batch_size,  # Scaled by batch size
+        layer_flops(input_dim, hidden_dim) * batch_size,
         layer_flops(hidden_dim, hidden_dim) * batch_size,
         layer_flops(hidden_dim, output_dim) * batch_size
     ]
-
-    # Plot FLOPs
+    
     bars2 = ax2.bar(layer_names, flops, color=['skyblue', 'lightgreen', 'salmon'])
     ax2.set_title(f'FLOPs per Layer (Batch Size: {batch_size})\n(Computational Complexity)')
     ax2.set_ylabel('Number of FLOPs')
-    ax2.set_yscale('log')  # Log scale for better comparison
+    ax2.set_yscale('log')
     ax2.tick_params(axis='x', rotation=45)
-
-    # Add value labels on bars
+    
     for bar, count in zip(bars2, flops):
         ax2.text(bar.get_x() + bar.get_width()/2, bar.get_height(),
                 f'{count:,}', ha='center', va='bottom')
-
+    
     plt.tight_layout()
     plt.suptitle('Model Complexity Analysis - Size vs. Computation', y=1.02, fontsize=16)
     plt.show()
 
-
 def print_activation_summary(activations_dict):
     """
-    Print a formatted summary table of activation statistics for all layers.
-
-    Tabular format provides quick overview of network health:
-    - Balanced mean/std indicate proper initialization and gradient flow
-    - Low sparsity in linear layers (close to 0%), controlled sparsity in ReLU layers (up to ~50%)
-    - Consistent shapes verify proper tensor flow and architecture integrity
-
-    This summary is invaluable for debugging, monitoring training progress,
-    and ensuring model stability during development and deployment.
-
-    Args:
-        activations_dict: Dictionary mapping layer names to activation tensors
+    Print formatted table of activation statistics.
+    
+    Quick text-based overview - useful for logging during training
+    or when you don't have visualization capabilities.
     """
     print("\n" + "="*100)
     print("ACTIVATION STATISTICS SUMMARY - Layer Health Check")
     print("="*100)
     print(f"{'Layer Name':<25} {'Shape':<18} {'Mean':<10} {'Std Dev':<10} {'Sparsity':<10}")
     print("-"*100)
-
+    
     for name, activation in activations_dict.items():
         stats = activation_stats(name, activation)
         print(f"{stats['name']:<25} {str(stats['shape']):<18} "
               f"{stats['mean']:<10.4f} {stats['std']:<10.4f} {stats['sparsity']:<10.2%}")
-
+    
     print("="*100)
     print("Interpretation Guide:")
     print("  - Mean ≈ 0, Std ≈ 1: Good initialization/flow")
@@ -456,96 +342,111 @@ def print_activation_summary(activations_dict):
     print("  - Sparsity > 0.1 in Linear layers: Unusual, check for errors")
     print("="*100)
 
+# ============================================================================
+# MAIN DEMONSTRATION
+# ============================================================================
 
 def main():
     """
-    Main demonstration function showcasing MLP forward pass with comprehensive analysis tools.
-
-    This comprehensive example demonstrates a complete workflow for:
-    1. Proper model initialization with Xavier scaling (prevents gradient issues)
-    2. Forward pass through multi-layer architecture (standard deep learning pattern)
-    3. Activation analysis for training diagnostics (identifies model health issues)
-    4. Model complexity profiling for deployment planning (resource estimation)
-    5. Visualization of key ML concepts (sparsity, distributions, FLOPs)
-
-    The workflow mirrors production ML pipelines where models are analyzed
-    for both functional correctness and computational efficiency before deployment.
+    Main demonstration of MLP forward pass with comprehensive analysis.
+    
+    This function showcases a complete workflow from initialization to analysis.
+    It's designed to teach through example - run this to see all concepts in action.
     """
     print("=== Multi-Layer Perceptron (MLP) Forward Pass Demonstration ===")
     print("This example demonstrates core deep learning concepts with analysis tools.\n")
-
-    # Model configuration - typical settings for a small demonstration network
-    input_dim = 16
-    hidden_dim = 32
-    output_dim = 8
-    batch_size = 16
-
+    
+    # ===== 1. MODEL CONFIGURATION =====
+    # These hyperparameters define our network architecture
+    # Small values for demonstration - real networks often have 100s or 1000s of neurons
+    input_dim = 16      # Number of input features (e.g., pixels, measurements)
+    hidden_dim = 32     # Number of neurons in hidden layers
+    output_dim = 8      # Number of outputs (e.g., classes, predictions)
+    batch_size = 16     # Number of samples processed together
+    
     print(f"Model Configuration:")
     print(f"  Input dimension: {input_dim} (e.g., features in a dataset)")
     print(f"  Hidden dimensions: {hidden_dim} (internal representation size)")
-    print(f"  Output dimension: {output_dim} (e.g., number of classes, regression targets)")
-    print(f"  Batch size: {batch_size} (number of samples processed together)")
-
-    # Initialize MLP parameters with proper initialization strategy
+    print(f"  Output dimension: {output_dim} (e.g., number of classes)")
+    print(f"  Batch size: {batch_size} (samples processed together)\n")
+    
+    # ===== 2. INITIALIZE MODEL =====
+    # Create the learnable parameters (weights and biases)
     params = init_mlp(input_dim, hidden_dim, output_dim)
-    print(f"\nInitialized 3-layer MLP with Xavier initialization.")
-
-    # Generate synthetic input data (simulates real data batch)
+    print(f"✓ Initialized 3-layer MLP with Xavier initialization.")
+    
+    # ===== 3. CREATE SYNTHETIC DATA =====
+    # Generate random data that mimics real dataset batches
+    # In practice, you'd load actual data here (images, text, sensor readings, etc.)
     x = np.random.randn(batch_size, input_dim)
-    print(f"Generated synthetic input data: shape {x.shape}")
-
-    # Perform forward pass through the network
+    print(f"✓ Generated synthetic input data: shape {x.shape}")
+    
+    # ===== 4. FORWARD PASS =====
+    # Pass data through the network - this is "inference" or "prediction"
     output, (x_in, z1, h1, z2, h2, out) = mlp_forward(x, params)
-    print(f"Forward pass completed. Output shape: {output.shape}")
-
-    # Organize activations for analysis and visualization
+    print(f"✓ Forward pass completed. Output shape: {output.shape}")
+    
+    # ===== 5. ORGANIZE ACTIVATIONS FOR ANALYSIS =====
+    # Collect all layer outputs for visualization and analysis
     activations = {
         'Input': x_in,
-        'Layer 1 (Linear)': z1,
-        'Layer 1 (ReLU)': h1,
+        'Layer 1 (Linear)': z1,    # Linear combination before ReLU
+        'Layer 1 (ReLU)': h1,      # After ReLU activation
         'Layer 2 (Linear)': z2,
         'Layer 2 (ReLU)': h2,
-        'Output': out
+        'Output': out              # Final network prediction
     }
-
-    # Calculate and display model complexity metrics
+    
+    # ===== 6. CALCULATE MODEL COMPLEXITY =====
+    # How big and computationally expensive is our model?
     total_params = sum([
         layer_param_count(params['W1'], params['b1']),
         layer_param_count(params['W2'], params['b2']),
         layer_param_count(params['W3'], params['b3'])
     ])
-
+    
     total_flops = sum([
-        layer_flops(input_dim, hidden_dim) * batch_size,  # Scaled by batch size
+        layer_flops(input_dim, hidden_dim) * batch_size,
         layer_flops(hidden_dim, hidden_dim) * batch_size,
         layer_flops(hidden_dim, output_dim) * batch_size
     ])
-
+    
     print(f"\nModel Complexity Analysis:")
     print(f"  Total parameters: {total_params:,} (affects model capacity and memory)")
     print(f"  Total FLOPs per batch: {total_flops:,} (affects computation time)")
-
-    # Print detailed activation statistics summary
+    
+    # ===== 7. TEXT-BASED ANALYSIS =====
+    # Quick look at activation statistics
     print_activation_summary(activations)
-
-    # Generate visualizations to understand model behavior
+    
+    # ===== 8. VISUALIZATIONS =====
+    # Visual analysis provides intuitive understanding
     print("\nGenerating visualizations for deeper analysis...")
     print("  - Activation Distributions: Shows how values are distributed across layers")
     print("  - Sparsity Patterns: Reveals ReLU behavior and potential dead neurons")
-    print("  - Model Complexity: Parameters and computational cost per layer")
-
-    # 1. Visualize activation distributions across all layers
+    print("  - Model Complexity: Parameters and computational cost per layer\n")
+    
+    # Show activation distributions (histograms)
     visualize_activations(activations)
-
-    # 2. Analyze sparsity patterns in ReLU layers
+    
+    # Show sparsity patterns (heatmaps)
     visualize_sparsity_patterns(activations)
-
-    # 3. Analyze model complexity (parameters and FLOPs)
+    
+    # Show model complexity (bar charts)
     visualize_model_complexity(params, input_dim, hidden_dim, output_dim, batch_size)
+    
+    print(f"\n✓ Final output shape: {output.shape}")
+    print("✓ Demonstration complete. This workflow is typical for analyzing neural networks.")
+    print("\nKey takeaways:")
+    print("  1. Proper initialization prevents gradient issues")
+    print("  2. Activation monitoring catches training problems early")
+    print("  3. Complexity analysis informs deployment decisions")
 
-    print(f"\nFinal output shape: {output.shape}")
-    print("Demonstration complete. This workflow is typical for analyzing neural networks.")
-
+# ============================================================================
+# ENTRY POINT
+# ============================================================================
 
 if __name__ == "__main__":
+    # When this script is run directly (not imported), execute the main function
+    # This is a common Python pattern - allows file to be both imported and run
     main()
