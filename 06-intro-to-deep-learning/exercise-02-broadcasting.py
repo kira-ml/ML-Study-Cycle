@@ -1,21 +1,24 @@
 # Author: kira-ml (GitHub)
 """
 NumPy Broadcasting Operations for Machine Learning
+==================================================
 
-This module demonstrates fundamental NumPy operations that are essential for 
-understanding broadcasting in machine learning contexts. It includes implementations
-of common tensor operations such as dimension expansion, tiling, axis permutation,
-and fused scale-shift operations.
+Welcome to this interactive tutorial on NumPy broadcasting! 
+If you're learning machine learning, you've probably encountered 
+error messages about "shape mismatch" or "broadcasting rules". 
+This module will demystify those concepts through clear explanations
+and visual examples.
 
-The implementations contrast explicit loop-based approaches with vectorized 
-NumPy operations to illustrate performance differences and best practices
-in numerical computing for ML applications.
+Key Concepts You'll Learn:
+• Broadcasting: How NumPy handles operations between arrays of different shapes
+• Dimension Expansion: Adding new axes to make arrays compatible
+• Vectorization: Why it's crucial for ML performance
+• Tensor Manipulation: Essential operations for preparing data in deep learning
 
-Key Concepts Demonstrated:
-- Broadcasting rules and their applications
-- Tensor shape manipulation for ML pipelines
-- Performance implications of vectorization
-- Common patterns in deep learning frameworks
+Think of broadcasting like making ingredients compatible for a recipe:
+If you have 3 eggs and 1 cup of flour, you can't add them directly. 
+But if you "broadcast" the 1 cup to match the 3 eggs dimensionally,
+you can combine them properly!
 """
 
 import numpy as np
@@ -27,434 +30,726 @@ import matplotlib.patches as patches
 
 def unsqueeze_to(tensor: np.ndarray, target_ndim: int) -> np.ndarray:
     """
-    Expand tensor dimensions to match target number of dimensions.
+    Add dimensions to a tensor until it reaches the target number of dimensions.
     
-    In ML, we often need to add dimensions to enable broadcasting between
-    tensors of different ranks. This is commonly used when combining
-    batch dimensions with parameter tensors.
+    ML CONTEXT: In neural networks, we often need to add batch dimensions or
+    channel dimensions to make tensors compatible. For example, a single image
+    might have shape (height, width, channels), but when processing a batch,
+    we need shape (batch_size, height, width, channels).
+    
+    ANALOGY: Think of adding empty boxes around your data to make it fit
+    a standardized container shape.
     
     Args:
-        tensor: Input tensor to expand
-        target_ndim: Desired number of dimensions
+        tensor: Your input array (could be 1D, 2D, 3D, etc.)
+        target_ndim: How many dimensions you want it to have
         
     Returns:
-        np.ndarray: Tensor with expanded dimensions
+        Expanded tensor with the specified number of dimensions
     """
+    # Keep adding dimensions at the beginning until we reach target
     while tensor.ndim < target_ndim:
+        # np.expand_dims adds a new dimension at position 0 (the front)
+        # This is like adding a new outer box around your data
         tensor = np.expand_dims(tensor, axis=0)
     return tensor
 
 
 def tile_like(source: np.ndarray, reference: np.ndarray) -> np.ndarray:
     """
-    Replicate source array to match the shape of reference array.
+    Replicate (tile) an array to match the shape of another array.
     
-    Used in ML for broadcasting operations where we need to repeat
-    parameters across batch dimensions or feature channels.
+    ML CONTEXT: Used when you need to repeat weights or parameters across
+    different dimensions. For example, repeating bias terms across all
+    batch examples, or repeating channel-wise normalization parameters.
+    
+    ANALOGY: Making copies of a small stamp to fill a larger sheet of paper.
     
     Args:
-        source: Array to replicate
-        reference: Target shape reference
+        source: The array you want to replicate
+        reference: The array whose shape you want to match
         
     Returns:
-        np.ndarray: Replicated array matching reference shape
-        
-    Raises:
-        ValueError: If source and reference have different dimensions
+        A tiled version of source that has the same shape as reference
     """
+    # First check: source and reference must have same number of dimensions
+    # This prevents confusing errors later
     if source.ndim != reference.ndim:
-        raise ValueError(f"Source and reference must have same number of dimensions. "
-                         f"Got {source.ndim} and {reference.ndim}")
+        raise ValueError(
+            f"Dimension mismatch! Source has {source.ndim} dimensions, "
+            f"but reference has {reference.ndim}. "
+            "They must have the same number of dimensions for tiling."
+        )
     
-    reps = tuple(ref_dim // src_dim for ref_dim, src_dim in zip(reference.shape, source.shape))
+    # Calculate how many times to repeat along each dimension
+    # For each dimension: reference_size / source_size = how many copies needed
+    reps = tuple(
+        ref_dim // src_dim 
+        for ref_dim, src_dim in zip(reference.shape, source.shape)
+    )
+    
+    # np.tile creates the repeated copies efficiently
     return np.tile(source, reps)
 
 
 def fused_scale_shift(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
     """
-    Perform element-wise fused scaling and shifting operation: a * b + c.
+    Compute a * b + c in a single, efficient operation.
     
-    This pattern is fundamental in ML - it's the core computation in batch
-    normalization, layer normalization, and many activation functions.
-    NumPy's vectorization makes this extremely efficient.
+    ML CONTEXT: This pattern appears EVERYWHERE in deep learning:
+    • Batch Normalization: (x - mean) * gamma / std + beta
+    • Layer Normalization: Similar pattern
+    • Attention mechanisms: q * k + bias
+    • Activation functions with learnable parameters
+    
+    PERFORMANCE TIP: Doing this as one operation (fused) is faster than
+    doing a*b first, then adding c, because it reduces memory access.
     
     Args:
-        a: Input tensor
-        b: Scale factors
-        c: Shift values
+        a: Input tensor (your data)
+        b: Scale factors (multipliers)
+        c: Shift values (additive terms)
         
     Returns:
-        np.ndarray: Scaled and shifted result
+        The scaled and shifted result
     """
+    # The beauty of NumPy: This one line does ALL the broadcasting automatically!
+    # If shapes don't match, NumPy tries to make them compatible using
+    # broadcasting rules (explained in visualizations)
     return a * b + c
 
 
 def permute_axes(tensor: np.ndarray, order: tuple) -> np.ndarray:
     """
-    Reorder tensor axes according to the specified permutation.
+    Reorder the dimensions (axes) of a tensor.
     
-    Essential for aligning tensor dimensions when connecting different
-    layers in neural networks or preparing data for specific operations.
+    ML CONTEXT: Different frameworks expect different dimension orders!
+    • PyTorch: Usually (batch, channels, height, width)
+    • TensorFlow: Usually (batch, height, width, channels)
+    • When saving/loading models between frameworks, you need to permute axes.
+    
+    ANALOGY: Rearranging the shelves in a bookcase to organize books differently.
     
     Args:
-        tensor: Input tensor
-        order: New axis order (e.g., (2, 0, 1) to move last axis to front)
+        tensor: Your multi-dimensional array
+        order: The new order of dimensions. Example: (2, 0, 1) means:
+               - New dimension 0 = old dimension 2
+               - New dimension 1 = old dimension 0
+               - New dimension 2 = old dimension 1
         
     Returns:
-        np.ndarray: Tensor with reordered axes
+        Tensor with rearranged dimensions
     """
+    # np.transpose is the workhorse for dimension reordering
+    # It creates a new "view" of the data with different dimension order
+    # (Not a copy, so it's memory efficient!)
     return np.transpose(tensor, axes=order)
 
 
 def loop_multiply_add(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
     """
-    Multiply and add using explicit loops (educational implementation).
+    Compute a * b + c using explicit Python loops (SLOW version).
     
-    This demonstrates what happens under the hood but is inefficient.
-    Included for pedagogical purposes to show why vectorization matters.
+    EDUCATIONAL PURPOSE: This shows you EXACTLY what happens when you
+    do element-wise operations. But NEVER use this in real ML code!
+    
+    WHY IT'S SLOW:
+    1. Python loops are slow (interpreted language overhead)
+    2. Individual array element access is inefficient
+    3. No CPU cache optimization
     
     Args:
-        a: Input tensor (2D)
-        b: Scale factors (1D)
-        c: Shift values (1D)
+        a: 2D input array
+        b: 1D scale factors (will be broadcast across rows)
+        c: 1D shift values (will be broadcast across rows)
         
     Returns:
-        np.ndarray: Result of a * b + c computed with loops
+        Same result as a * b + c, but computed inefficiently
     """
+    # Create empty result array with same shape as input
     result = np.zeros_like(a)
+    
+    # Outer loop: iterate through rows (first dimension)
     for i in range(a.shape[0]):
+        # Inner loop: iterate through columns (second dimension)
         for j in range(a.shape[1]):
+            # For each element: multiply by scale factor, add shift
+            # Note: b[j] and c[j] use same j index - this is broadcasting!
             result[i, j] = a[i, j] * b[j] + c[j]
+    
     return result
 
 
 def vectorized_multiply_add(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
     """
-    Multiply and add using vectorized NumPy operations (production implementation).
+    Compute a * b + c using NumPy vectorization (FAST version).
     
-    Leverages NumPy's broadcasting to perform the same operation as loop_multiply_add
-    but much more efficiently. This is how you'd implement it in production ML code.
+    PRODUCTION CODE: This is how you should ALWAYS write ML operations.
+    
+    WHY IT'S FAST:
+    1. Operations happen in C/C++ (compiled, not interpreted)
+    2. Uses CPU SIMD instructions (processes multiple elements at once)
+    3. Optimized memory access patterns
+    4. Automatically handles broadcasting
     
     Args:
-        a: Input tensor (2D)
-        b: Scale factors (1D)
-        c: Shift values (1D)
+        a: 2D input array
+        b: 1D scale factors
+        c: 1D shift values
         
     Returns:
-        np.ndarray: Result of a * b + c computed with vectorization
+        Result of a * b + c, computed efficiently
     """
+    # Magic happens here: NumPy automatically broadcasts b and c
+    # to match the shape of a, then does element-wise operations
+    # This one line replaces ALL the loops above!
     return a * b + c
 
 
 # === VISUALIZATION FUNCTIONS ===
+# These help you SEE what broadcasting looks like
 
 def visualize_broadcasting_concept():
-    """Visualize how broadcasting works conceptually."""
+    """
+    Show how broadcasting works when adding arrays of different shapes.
+    
+    KEY INSIGHT: Broadcasting automatically expands smaller arrays
+    to match larger ones, WITHOUT making copies in memory!
+    """
     fig, axes = plt.subplots(1, 3, figsize=(15, 4))
     
-    # Original arrays
+    # Create example arrays
     a = np.array([[1, 2, 3],
-                  [4, 5, 6]])  # Shape (2, 3)
-    b = np.array([10, 20, 30])   # Shape (3,)
+                  [4, 5, 6]])  # Shape (2, 3) - like 2 samples, 3 features
+    b = np.array([10, 20, 30])   # Shape (3,) - like 3 bias terms
     
-    # Visualize array a
-    im1 = axes[0].imshow(a, cmap='Blues', aspect='auto')
-    axes[0].set_title('Array A: Shape (2, 3)')
-    axes[0].set_xlabel('Columns')
-    axes[0].set_ylabel('Rows')
+    # --- Plot 1: Original array A ---
+    axes[0].imshow(a, cmap='Blues', aspect='auto')
+    axes[0].set_title('Array A: Shape (2, 3)\n(2 rows, 3 columns)')
+    axes[0].set_xlabel('Feature dimension')
+    axes[0].set_ylabel('Sample dimension')
+    # Add text labels to each cell
     for i in range(a.shape[0]):
         for j in range(a.shape[1]):
-            axes[0].text(j, i, str(a[i, j]), ha='center', va='center')
+            axes[0].text(j, i, str(a[i, j]), ha='center', va='center', 
+                        fontweight='bold')
     
-    # Visualize array b
-    b_reshaped = b.reshape(1, -1)
-    im2 = axes[1].imshow(b_reshaped, cmap='Reds', aspect='auto')
-    axes[1].set_title('Array B: Shape (3,) → Broadcasted')
-    axes[1].set_xlabel('Columns')
-    axes[1].set_ylabel('Broadcast Dimension')
+    # --- Plot 2: Array B before/after broadcasting ---
+    # Reshape b to 2D for visualization
+    b_reshaped = b.reshape(1, -1)  # Now shape (1, 3)
+    axes[1].imshow(b_reshaped, cmap='Reds', aspect='auto')
+    axes[1].set_title('Array B: Shape (3,)\nBroadcasted to (2, 3)')
+    axes[1].set_xlabel('Feature dimension')
+    axes[1].set_ylabel('Broadcast dimension')
+    # Show what happens during broadcasting
     for j in range(b.shape[0]):
-        axes[1].text(j, 0, str(b[j]), ha='center', va='center')
+        axes[1].text(j, 0, str(b[j]), ha='center', va='center', 
+                    fontweight='bold')
+        # Draw arrow to show repetition
+        axes[1].annotate('', xy=(j, 0.5), xytext=(j, 0),
+                        arrowprops=dict(arrowstyle='->', color='black', alpha=0.5))
     
-    # Visualize result
-    result = a + b
-    im3 = axes[2].imshow(result, cmap='Greens', aspect='auto')
-    axes[2].set_title('Result A + B: Shape (2, 3)')
-    axes[2].set_xlabel('Columns')
-    axes[2].set_ylabel('Rows')
+    # --- Plot 3: Result of A + B ---
+    result = a + b  # Broadcasting happens here!
+    axes[2].imshow(result, cmap='Greens', aspect='auto')
+    axes[2].set_title('Result: A + B\nShape (2, 3)')
+    axes[2].set_xlabel('Feature dimension')
+    axes[2].set_ylabel('Sample dimension')
     for i in range(result.shape[0]):
         for j in range(result.shape[1]):
-            axes[2].text(j, i, str(result[i, j]), ha='center', va='center')
+            axes[2].text(j, i, str(result[i, j]), ha='center', va='center',
+                        fontweight='bold')
     
     plt.tight_layout()
-    plt.suptitle('Broadcasting Concept: (2,3) + (3,) → (2,3)', y=1.05)
+    # Main title explaining the concept
+    plt.suptitle('BROADCASTING: How (2,3) + (3,) becomes (2,3)\n'
+                 'The 1D array B is repeated across rows to match A', 
+                 y=1.05, fontsize=14, fontweight='bold')
     plt.show()
 
 
 def visualize_unsqueeze_operation():
-    """Visualize dimension expansion (unsqueeze) operation."""
+    """
+    Show how adding dimensions (unsqueezing) works.
+    
+    ML CONTEXT: This is like adding "container" dimensions:
+    sample → batch of samples → batch of sequences of samples
+    """
     fig, axes = plt.subplots(1, 3, figsize=(12, 3))
     
-    # Original 1D array
+    # Start with simple 1D array (like a single feature vector)
     original = np.array([1, 2, 3])
-    axes[0].bar(range(len(original)), original, color='blue', alpha=0.7)
-    axes[0].set_title(f'Original: Shape {original.shape}')
-    axes[0].set_xlabel('Index')
-    axes[0].set_ylabel('Value')
     
-    # After one unsqueeze
-    unsqueezed1 = np.expand_dims(original, axis=0)
+    # --- Plot 1: Original 1D array ---
+    axes[0].bar(range(len(original)), original, color='blue', alpha=0.7)
+    axes[0].set_title(f'1D Vector\nShape: {original.shape}')
+    axes[0].set_xlabel('Feature index')
+    axes[0].set_ylabel('Value')
+    axes[0].set_ylim(0, 4)
+    
+    # --- Plot 2: After first unsqueeze (add batch dimension) ---
+    unsqueezed1 = np.expand_dims(original, axis=0)  # Shape becomes (1, 3)
     axes[1].imshow(unsqueezed1, cmap='Blues', aspect='auto')
-    axes[1].set_title(f'After 1 unsqueeze: Shape {unsqueezed1.shape}')
+    axes[1].set_title(f'Add batch dimension\nShape: {unsqueezed1.shape}')
+    axes[1].set_xlabel('Feature dimension')
+    axes[1].set_ylabel('Batch dimension')
+    # Label the single batch
+    axes[1].text(1.5, 0, 'Batch 0', ha='center', va='center', 
+                bbox=dict(boxstyle='round', facecolor='yellow', alpha=0.5))
     for j in range(unsqueezed1.shape[1]):
         axes[1].text(j, 0, str(unsqueezed1[0, j]), ha='center', va='center')
     
-    # After two unsqueezes
-    unsqueezed2 = np.expand_dims(np.expand_dims(original, axis=0), axis=0)
-    axes[2].imshow(unsqueezed2, cmap='Blues', aspect='auto')
-    axes[2].set_title(f'After 2 unsqueezes: Shape {unsqueezed2.shape}')
+    # --- Plot 3: After second unsqueeze (add sequence dimension) ---
+    unsqueezed2 = np.expand_dims(unsqueezed1, axis=0)  # Shape becomes (1, 1, 3)
+    # We need to display 3D data in 2D - show it as a depth stack
+    axes[2].imshow(unsqueezed2[0], cmap='Blues', aspect='auto')  # Take first "depth"
+    axes[2].set_title(f'Add sequence dimension\nShape: {unsqueezed2.shape}')
+    axes[2].set_xlabel('Feature dimension')
+    axes[2].set_ylabel('Sequence dimension')
+    axes[2].text(1.5, 0.5, 'Now 3D!\n(batch, sequence, features)', 
+                ha='center', va='center',
+                bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.7))
     for j in range(unsqueezed2.shape[2]):
         axes[2].text(j, 0, str(unsqueezed2[0, 0, j]), ha='center', va='center')
     
     plt.tight_layout()
-    plt.suptitle('Unsqueeze Operation (Adding Dimensions)', y=1.05)
+    plt.suptitle('UNSQUEEZE: Adding dimensions for compatibility\n'
+                 'Common when preparing data for neural networks', 
+                 y=1.05, fontsize=12)
     plt.show()
 
 
 def visualize_tiling_operation():
-    """Visualize tiling operation."""
+    """
+    Show how tiling replicates arrays to match target shapes.
+    
+    ML CONTEXT: Useful when you have per-channel parameters that need to
+    be applied to every spatial location in an image.
+    """
     fig, axes = plt.subplots(1, 3, figsize=(15, 4))
     
-    # Source array (2, 1)
+    # Source: A 2x1 array (like 2 channels, 1 spatial location)
     source = np.array([[1], [2]])
-    im1 = axes[0].imshow(source, cmap='Reds', aspect='auto')
-    axes[0].set_title(f'Source: Shape {source.shape}')
+    
+    # --- Plot 1: Source array ---
+    axes[0].imshow(source, cmap='Reds', aspect='auto')
+    axes[0].set_title(f'Source array\nShape: {source.shape}')
+    axes[0].set_xlabel('Spatial dimension')
+    axes[0].set_ylabel('Channel dimension')
     for i in range(source.shape[0]):
-        axes[0].text(0, i, str(source[i, 0]), ha='center', va='center')
+        axes[0].text(0, i, str(source[i, 0]), ha='center', va='center',
+                    fontweight='bold')
+    axes[0].text(0.5, -0.2, 'Each channel has\none parameter value', 
+                ha='center', transform=axes[0].transAxes, fontsize=9)
     
-    # Reference array (2, 3)
-    reference = np.array([[0, 0, 0], [0, 0, 0]])  # Just for shape reference
-    im2 = axes[1].imshow(reference, cmap='Greys', alpha=0.3, aspect='auto')
-    axes[1].set_title(f'Reference Shape: {reference.shape}')
-    axes[1].text(1, 0.5, 'Target\nShape', ha='center', va='center', transform=axes[1].transAxes)
+    # --- Plot 2: Target shape we want to match ---
+    # Create a reference array with target shape (2, 3)
+    reference = np.zeros((2, 3))  # Just for visualization
+    axes[1].imshow(reference, cmap='Greys', alpha=0.3, aspect='auto')
+    axes[1].set_title(f'Target shape\nShape: {reference.shape}')
+    axes[1].set_xlabel('Spatial positions (3)')
+    axes[1].set_ylabel('Channels (2)')
+    axes[1].text(1, 0.5, 'We want to apply\nchannel parameters\nacross ALL positions', 
+                ha='center', va='center', transform=axes[1].transAxes,
+                bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.5))
     
-    # Tiled result
-    result = tile_like(source, np.ones((2, 3)))
-    im3 = axes[2].imshow(result, cmap='Greens', aspect='auto')
-    axes[2].set_title(f'Tiled Result: Shape {result.shape}')
+    # --- Plot 3: Tiled result ---
+    result = tile_like(source, np.ones((2, 3)))  # Tile to shape (2, 3)
+    axes[2].imshow(result, cmap='Greens', aspect='auto')
+    axes[2].set_title(f'Tiled result\nShape: {result.shape}')
+    axes[2].set_xlabel('Spatial positions')
+    axes[2].set_ylabel('Channels')
+    # Show how values are repeated
     for i in range(result.shape[0]):
         for j in range(result.shape[1]):
-            axes[2].text(j, i, str(result[i, j]), ha='center', va='center')
+            axes[2].text(j, i, str(result[i, j]), ha='center', va='center',
+                        fontweight='bold')
+        # Draw arrows showing repetition
+        axes[2].annotate('', xy=(2.5, i), xytext=(0.5, i),
+                        arrowprops=dict(arrowstyle='->', color='black', alpha=0.3))
     
     plt.tight_layout()
-    plt.suptitle('Tiling Operation: Replicating Arrays', y=1.05)
+    plt.suptitle('TILING: Repeating parameters across dimensions\n'
+                 'Example: Applying channel-wise normalization across an image', 
+                 y=1.05, fontsize=12)
     plt.show()
 
 
 def visualize_axis_permutation():
-    """Visualize axis permutation operation."""
+    """
+    Show how reordering tensor dimensions works.
+    
+    ML CONTEXT: Different ML frameworks expect different dimension orders.
+    This operation changes the "perspective" without changing the data.
+    """
     fig = plt.figure(figsize=(15, 5))
     
-    # Original tensor (2, 3, 4)
+    # Create a 3D tensor: (batch=2, height=3, width=4)
+    # Like 2 images, each 3 pixels tall, 4 pixels wide
     original = np.random.randint(1, 10, (2, 3, 4))
     
-    # Create 3D visualization
+    # --- Plot 1: Original tensor visualization ---
     ax1 = fig.add_subplot(131, projection='3d')
+    # Create a voxel representation (like a 3D checkerboard)
     ax1.voxels(np.ones_like(original), facecolors='blue', alpha=0.3)
-    ax1.set_title(f'Original: Shape {original.shape}\n(2 batches, 3 rows, 4 cols)')
-    ax1.set_xlabel('Cols (dim 2)')
-    ax1.set_ylabel('Rows (dim 1)')
-    ax1.set_zlabel('Batches (dim 0)')
+    ax1.set_title(f'Original: Shape {original.shape}\n(batch, height, width)')
+    ax1.set_xlabel('Width (4)')
+    ax1.set_ylabel('Height (3)')
+    ax1.set_zlabel('Batch (2)')
+    ax1.view_init(elev=20, azim=-35)
     
-    # Permuted tensor (4, 2, 3)
+    # --- Plot 2: Permuted tensor ---
+    # Change order to (width, batch, height) - common in some operations
     permuted = permute_axes(original, (2, 0, 1))
     
     ax2 = fig.add_subplot(132, projection='3d')
     ax2.voxels(np.ones_like(permuted), facecolors='red', alpha=0.3)
-    ax2.set_title(f'Permuted: Shape {permuted.shape}\n(4 cols, 2 batches, 3 rows)')
-    ax2.set_xlabel('Rows (dim 2)')
-    ax2.set_ylabel('Batches (dim 1)')
-    ax2.set_zlabel('Cols (dim 0)')
+    ax2.set_title(f'Permuted: Shape {permuted.shape}\n(width, batch, height)')
+    ax2.set_xlabel('Height (3)')
+    ax2.set_ylabel('Batch (2)')
+    ax2.set_zlabel('Width (4)')
+    ax2.view_init(elev=20, azim=-35)
     
-    # Show axis mapping
+    # --- Plot 3: Dimension mapping diagram ---
     ax3 = fig.add_subplot(133)
+    # Show which dimension goes where
     mapping_data = np.array([
-        [0, 2],  # dim 0 → dim 2
-        [1, 0],  # dim 1 → dim 0
-        [2, 1]   # dim 2 → dim 1
+        [0, 2],  # Original dim 0 (batch) → New dim 2
+        [1, 0],  # Original dim 1 (height) → New dim 0
+        [2, 1]   # Original dim 2 (width) → New dim 1
     ])
-    ax3.scatter(mapping_data[:, 0], mapping_data[:, 1], s=100, c='green')
+    
+    # Plot the mapping
+    ax3.scatter(mapping_data[:, 0], mapping_data[:, 1], s=200, 
+                c=['blue', 'green', 'red'], edgecolors='black')
+    
+    # Add labels for each dimension
+    dim_names = ['Batch', 'Height', 'Width']
     for i, (src, dst) in enumerate(mapping_data):
-        ax3.annotate(f'dim {src} → dim {dst}', (src, dst), xytext=(5, 5), 
-                    textcoords='offset points')
-    ax3.plot(mapping_data[:, 0], mapping_data[:, 1], 'g--', alpha=0.5)
+        ax3.annotate(f'{dim_names[i]}: {src} → {dst}', 
+                    (src, dst), 
+                    xytext=(10, 10), 
+                    textcoords='offset points',
+                    arrowprops=dict(arrowstyle='->', alpha=0.5))
+    
+    # Connect with lines to show the mapping
+    ax3.plot(mapping_data[:, 0], mapping_data[:, 1], 'k--', alpha=0.3)
+    
     ax3.set_xlim(-0.5, 2.5)
     ax3.set_ylim(-0.5, 2.5)
-    ax3.set_xlabel('Original Dimensions')
-    ax3.set_ylabel('New Dimensions')
-    ax3.set_title('Axis Permutation Mapping')
-    ax3.grid(True)
+    ax3.set_xlabel('Original dimension index')
+    ax3.set_ylabel('New dimension index')
+    ax3.set_title('Dimension Permutation Mapping')
+    ax3.grid(True, alpha=0.3)
     
     plt.tight_layout()
-    plt.suptitle('Axis Permutation Operation', y=1.05)
+    plt.suptitle('AXIS PERMUTATION: Reordering tensor dimensions\n'
+                 'Useful when switching between ML frameworks', 
+                 y=1.05, fontsize=12)
     plt.show()
 
 
 def visualize_performance_comparison(loop_time, vec_time):
-    """Visualize performance comparison between loop and vectorized approaches."""
+    """
+    Visualize the dramatic speed difference between loops and vectorization.
+    
+    KEY MESSAGE: Vectorization isn't just "a bit faster" - it's often
+    100x or 1000x faster for ML-scale operations!
+    """
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
     
-    # Bar chart comparison
-    methods = ['Loops', 'Vectorized']
+    # Data for comparison
+    methods = ['Python Loops', 'NumPy Vectorized']
     times = [loop_time, vec_time]
     colors = ['red', 'green']
     
+    # --- Plot 1: Time comparison (log scale) ---
     bars = ax1.bar(methods, times, color=colors, alpha=0.7)
-    ax1.set_ylabel('Time (seconds)')
-    ax1.set_title('Performance Comparison')
-    ax1.set_yscale('log')
+    ax1.set_ylabel('Execution Time (seconds)')
+    ax1.set_title('Execution Time Comparison')
+    ax1.set_yscale('log')  # Log scale because difference is huge!
     
-    # Add value labels on bars
+    # Add time labels on bars
     for bar, time_val in zip(bars, times):
-        ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height(),
-                f'{time_val:.6f}s', ha='center', va='bottom')
+        height = bar.get_height()
+        ax1.text(bar.get_x() + bar.get_width()/2, height,
+                f'{time_val:.6f}s', 
+                ha='center', va='bottom',
+                fontweight='bold')
     
-    # Speedup visualization
+    # Add a dramatic comparison note
+    if loop_time > vec_time * 10:
+        ax1.text(0.5, 0.9, '🚨 ORDER OF MAGNITUDE DIFFERENCE!', 
+                ha='center', transform=ax1.transAxes,
+                bbox=dict(boxstyle='round', facecolor='yellow', alpha=0.8))
+    
+    # --- Plot 2: Speedup factor ---
     speedup = loop_time / vec_time
     ax2.bar(['Speedup'], [speedup], color='orange', alpha=0.7)
     ax2.set_ylabel('Times Faster')
-    ax2.set_title(f'Vectorization Speedup: {speedup:.1f}x')
-    ax2.text(0, speedup/2, f'{speedup:.1f}x', ha='center', va='center', 
-             fontsize=14, fontweight='bold')
+    ax2.set_title(f'Vectorization Speedup\n{methods[0]} / {methods[1]}')
+    
+    # Big, bold speedup number
+    ax2.text(0, speedup/2, f'{speedup:.1f}x', 
+             ha='center', va='center', 
+             fontsize=24, fontweight='bold', color='darkred')
+    
+    # Add context about what this means
+    if speedup > 100:
+        message = 'Game-changing for training!'
+        color = 'red'
+    elif speedup > 10:
+        message = 'Significant impact on training time'
+        color = 'orange'
+    else:
+        message = 'Noticeable improvement'
+        color = 'green'
+    
+    ax2.text(0, speedup * 1.1, message, 
+             ha='center', va='bottom', color=color, fontweight='bold')
     
     plt.tight_layout()
-    plt.suptitle('NumPy Vectorization Performance Benefits', y=1.02)
+    plt.suptitle('WHY VECTORIZATION MATTERS FOR MACHINE LEARNING\n'
+                 'Even simple operations show massive speed differences', 
+                 y=1.02, fontsize=14, fontweight='bold')
     plt.show()
 
 
 def visualize_fused_scale_shift():
-    """Visualize fused scale-shift operation."""
+    """
+    Visualize the fused scale-shift operation that's everywhere in deep learning.
+    
+    ML CONTEXT: This pattern appears in batch norm, layer norm, attention,
+    and many other places. Understanding it is crucial!
+    """
     fig, axes = plt.subplots(2, 2, figsize=(12, 8))
     
-    # Input data
+    # Create example data that mimics real ML scenarios
     a = np.array([[1, 2, 3],
-                  [4, 5, 6]])  # Shape (2, 3)
-    b = np.array([10, 20, 30])   # Scale factors
-    c = np.array([1, 1, 1])      # Shift values
+                  [4, 5, 6]])  # Shape (2, 3) - like 2 samples, 3 features
+    b = np.array([10, 20, 30])   # Scale factors (gamma in batch norm)
+    c = np.array([1, 1, 1])      # Shift values (beta in batch norm)
     
-    # Show input array
+    # --- Top-left: Input data A ---
     im1 = axes[0, 0].imshow(a, cmap='Blues', aspect='auto')
-    axes[0, 0].set_title('Input Array A')
+    axes[0, 0].set_title('Input Data A\n(2 samples × 3 features)')
     for i in range(a.shape[0]):
         for j in range(a.shape[1]):
-            axes[0, 0].text(j, i, str(a[i, j]), ha='center', va='center')
+            axes[0, 0].text(j, i, f'x={a[i, j]}', 
+                           ha='center', va='center',
+                           bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
+    axes[0, 0].set_xlabel('Feature index')
+    axes[0, 0].set_ylabel('Sample index')
     
-    # Show scale factors
+    # --- Top-right: Scale factors B ---
     im2 = axes[0, 1].imshow(b.reshape(1, -1), cmap='Reds', aspect='auto')
-    axes[0, 1].set_title('Scale Factors B')
+    axes[0, 1].set_title('Scale Factors B\n(per-feature multipliers)')
     for j in range(b.shape[0]):
-        axes[0, 1].text(j, 0, str(b[j]), ha='center', va='center')
+        axes[0, 1].text(j, 0, f'×{b[j]}', 
+                       ha='center', va='center',
+                       bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
+    axes[0, 1].set_xlabel('Feature index')
+    axes[0, 1].set_ylabel('(Broadcast dimension)')
+    # Show broadcasting with arrows
+    for j in range(b.shape[0]):
+        axes[0, 1].annotate('', xy=(j, 0.3), xytext=(j, 0),
+                           arrowprops=dict(arrowstyle='->', color='black', alpha=0.5))
     
-    # Show shift values
+    # --- Bottom-left: Shift values C ---
     im3 = axes[1, 0].imshow(c.reshape(1, -1), cmap='Greens', aspect='auto')
-    axes[1, 0].set_title('Shift Values C')
+    axes[1, 0].set_title('Shift Values C\n(per-feature offsets)')
     for j in range(c.shape[0]):
-        axes[1, 0].text(j, 0, str(c[j]), ha='center', va='center')
+        axes[1, 0].text(j, 0, f'+{c[j]}', 
+                       ha='center', va='center',
+                       bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
+    axes[1, 0].set_xlabel('Feature index')
+    axes[1, 0].set_ylabel('(Broadcast dimension)')
     
-    # Show result
+    # --- Bottom-right: Result ---
     result = fused_scale_shift(a, b, c)
     im4 = axes[1, 1].imshow(result, cmap='Purples', aspect='auto')
-    axes[1, 1].set_title('Result: A * B + C')
+    axes[1, 1].set_title('Result: A × B + C\n(scale then shift)')
+    # Show the computation for a few cells
     for i in range(result.shape[0]):
         for j in range(result.shape[1]):
-            axes[1, 1].text(j, i, str(result[i, j]), ha='center', va='center')
+            # Show the actual computation
+            computation = f'{a[i,j]}×{b[j]}+{c[j]}={result[i,j]}'
+            axes[1, 1].text(j, i, computation, 
+                           ha='center', va='center', fontsize=8,
+                           bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
+    axes[1, 1].set_xlabel('Feature index')
+    axes[1, 1].set_ylabel('Sample index')
     
     plt.tight_layout()
-    plt.suptitle('Fused Scale-Shift Operation: A * B + C', y=1.02)
+    plt.suptitle('FUSED SCALE-SHIFT: The workhorse of deep learning\n'
+                 'Pattern: output = input × scale + shift  (per-feature operations)', 
+                 y=1.02, fontsize=14, fontweight='bold')
     plt.show()
 
 
 def main():
-    """Demonstrate and benchmark NumPy broadcasting operations with visualizations."""
+    """
+    Main demonstration function - your guided tour through NumPy broadcasting!
     
-    print("=== Visualizing NumPy Broadcasting Concepts ===")
+    This runs all the visualizations and comparisons to give you a complete
+    understanding of how broadcasting works and why it's essential for ML.
+    """
     
-    # Show conceptual broadcasting
+    print("=" * 70)
+    print("WELCOME TO NUMPY BROADCASTING FOR MACHINE LEARNING")
+    print("=" * 70)
+    print("\n🎯 Learning Objectives:")
+    print("1. Understand how NumPy handles different-shaped arrays")
+    print("2. Learn essential tensor manipulation operations")
+    print("3. See why vectorization is crucial for ML performance")
+    print("4. Recognize common patterns in deep learning code")
+    
+    print("\n" + "=" * 70)
+    print("PART 1: VISUALIZING KEY CONCEPTS")
+    print("=" * 70)
+    
+    print("\n📊 1. Broadcasting Concept")
+    print("   How (2,3) + (3,) becomes (2,3)")
     visualize_broadcasting_concept()
     
-    # Show unsqueeze operation
+    print("\n📐 2. Dimension Expansion (Unsqueeze)")
+    print("   Adding dimensions for compatibility")
     visualize_unsqueeze_operation()
     
-    # Show tiling operation
+    print("\n🔁 3. Tiling Operation")
+    print("   Repeating parameters across dimensions")
     visualize_tiling_operation()
     
-    # Show axis permutation
+    print("\n🔄 4. Axis Permutation")
+    print("   Reordering tensor dimensions")
     visualize_axis_permutation()
     
-    # Show fused scale-shift
+    print("\n⚡ 5. Fused Scale-Shift Operation")
+    print("   The fundamental pattern in deep learning")
     visualize_fused_scale_shift()
     
-    print("\n=== Performance Comparison: Loops vs Vectorization ===")
+    print("\n" + "=" * 70)
+    print("PART 2: PERFORMANCE COMPARISON - WHY VECTORIZATION MATTERS")
+    print("=" * 70)
     
-    # Typical ML batch size (N) and feature/channel count (C)
+    # Typical ML scenario: batch of 16 samples, each with 32 features
+    # (Small numbers for demonstration, real ML uses thousands!)
     N, C = 16, 32
-    a = np.random.randn(N, C)  # Batch of samples
-    b = np.random.randn(C)     # Per-channel scale parameters
-    c = np.random.randn(C)     # Per-channel shift parameters
-
-    # Benchmark loop-based implementation
-    start = perf_counter()
-    out1 = loop_multiply_add(a, b, c)
-    loop_time = perf_counter() - start
-
-    # Benchmark vectorized implementation
-    start = perf_counter()
-    out2 = vectorized_multiply_add(a, b, c)
-    vec_time = perf_counter() - start
-
-    print("Output equality check:", np.allclose(out1, out2))
-    print(f"Loop implementation time: {loop_time:.6f}s")
-    print(f"Vectorized implementation time: {vec_time:.6f}s")
-    print(f"Performance improvement: {loop_time/vec_time:.1f}x faster")
+    print(f"\nSimulating ML operation on {N} samples with {C} features each")
     
-    # Visualize performance comparison
+    # Create example data
+    a = np.random.randn(N, C)  # Batch of samples (e.g., neural network activations)
+    b = np.random.randn(C)     # Per-feature scale parameters (e.g., batch norm gamma)
+    c = np.random.randn(C)     # Per-feature shift parameters (e.g., batch norm beta)
+    
+    print("\nTiming loop-based implementation (educational, not practical)...")
+    start = perf_counter()
+    loop_result = loop_multiply_add(a, b, c)
+    loop_time = perf_counter() - start
+    
+    print("Timing vectorized implementation (production-ready)...")
+    start = perf_counter()
+    vec_result = vectorized_multiply_add(a, b, c)
+    vec_time = perf_counter() - start
+    
+    # Verify both methods give same result (they should!)
+    print(f"\n✅ Verification: Results match? {np.allclose(loop_result, vec_result)}")
+    print(f"   (Small differences might occur due to floating-point rounding)")
+    
+    print(f"\n⏱️  Loop time:    {loop_time:.6f} seconds")
+    print(f"⏱️  Vectorized:   {vec_time:.6f} seconds")
+    
+    speedup = loop_time / vec_time
+    print(f"🚀 Speedup:       {speedup:.1f}x faster!")
+    
+    # Visualize the performance difference
     visualize_performance_comparison(loop_time, vec_time)
     
-    # Demonstrate tensor manipulation functions
-    print("\n=== Tensor Shape Manipulation Functions ===")
+    print("\n" + "=" * 70)
+    print("PART 3: PRACTICAL TENSOR MANIPULATIONS")
+    print("=" * 70)
     
-    # unsqueeze_to: Adding dimensions for broadcasting compatibility
+    print("\n🧩 1. Unsqueeze_to: Adding dimensions")
     x = np.array([1, 2, 3])
+    print(f"   Original: shape {x.shape} = {x}")
     y = unsqueeze_to(x, 3)
-    print(f"Original shape: {x.shape}")
-    print(f"Unsqueezed to 3D: {y.shape}")
+    print(f"   After unsqueeze_to(3): shape {y.shape}")
+    print(f"   Now compatible with 3D operations!")
     
-    # tile_like: Replicating arrays to match target shapes
-    src = np.array([[1], [2]])                    # Shape: (2, 1)
-    ref = np.array([[1, 2, 3], [4, 5, 6]])       # Shape: (2, 3)
+    print("\n🧩 2. Tile_like: Replicating arrays")
+    src = np.array([[1], [2]])
+    ref = np.array([[1, 2, 3], [4, 5, 6]])
     tiled = tile_like(src, ref)
-    print(f"Source shape: {src.shape}")
-    print(f"Reference shape: {ref.shape}")
-    print(f"Tiled result shape: {tiled.shape}")
-    print("Tiled array:\n", tiled)
+    print(f"   Source shape: {src.shape}")
+    print(f"   Target shape: {ref.shape}")
+    print(f"   Tiled shape:  {tiled.shape}")
+    print(f"   Tiled array:\n{tiled}")
     
-    # fused_scale_shift: Common ML operation pattern
-    a = np.array([[1, 2], [3, 4]])
-    b = np.array([10, 20])  # Scale factors
-    c = np.array([1, 1])    # Shift values
-    result = fused_scale_shift(a, b, c)
-    print("Fused scale-shift result:\n", result)
+    print("\n🧩 3. Fused Scale-Shift: ML fundamental")
+    a_small = np.array([[1, 2], [3, 4]])
+    b_small = np.array([10, 20])
+    c_small = np.array([1, 2])
+    result = fused_scale_shift(a_small, b_small, c_small)
+    print(f"   Input A:\n{a_small}")
+    print(f"   Scale B: {b_small}")
+    print(f"   Shift C: {c_small}")
+    print(f"   Result A×B+C:\n{result}")
     
-    # permute_axes: Reordering tensor dimensions
-    x = np.random.randn(2, 3, 4)  # Example: (batch, height, width)
-    y = permute_axes(x, (2, 0, 1)) # Reorder to (width, batch, height)
-    print(f"Original shape: {x.shape}")
-    print(f"Permuted shape: {y.shape}")
+    print("\n🧩 4. Permute_axes: Dimension reordering")
+    x_3d = np.random.randn(2, 3, 4)
+    y_3d = permute_axes(x_3d, (2, 0, 1))
+    print(f"   Original shape (batch, height, width): {x_3d.shape}")
+    print(f"   Permuted shape (width, batch, height): {y_3d.shape}")
     
-    # Additional verification of basic operations
-    print("\n=== Basic NumPy Operations Verification ===")
-    dot_product = np.dot(np.array([1, 2, 3]), np.array([4, 5, 6]))
-    print(f"Dot product test: {dot_product}")
+    print("\n" + "=" * 70)
+    print("🎓 SUMMARY & KEY TAKEAWAYS")
+    print("=" * 70)
+    
+    summary = """
+    WHAT YOU'VE LEARNED:
+    
+    1. Broadcasting: NumPy automatically expands smaller arrays to match
+       larger ones, enabling operations between different shapes.
+       
+    2. Dimension Manipulation:
+       • unsqueeze_to: Add dimensions for compatibility
+       • tile_like: Repeat arrays to match target shapes
+       • permute_axes: Reorder dimensions for different frameworks
+       
+    3. Vectorization: Using NumPy's built-in operations instead of Python
+       loops is NOT just "a bit faster" - it's often 100-1000x faster!
+       
+    4. ML Patterns: The fused scale-shift (a*b + c) appears everywhere in
+       deep learning (batch norm, layer norm, attention, etc.).
+    
+    PRACTICAL ADVICE:
+    • Always use vectorized operations in ML code
+    • Understand broadcasting rules to avoid shape errors
+    • Use dimension manipulation to prepare data correctly
+    • Profile your code to identify bottlenecks
+    """
+    
+    print(summary)
+    
+    print("\n" + "=" * 70)
+    print("🚀 NEXT STEPS FOR YOUR ML JOURNEY")
+    print("=" * 70)
+    
+    next_steps = """
+    1. Practice: Try modifying the examples with your own arrays
+    2. Explore: Look at how real ML libraries (PyTorch, TensorFlow) 
+       use these operations
+    3. Apply: Use these concepts in your own ML projects
+    4. Deepen: Study NumPy's official documentation on broadcasting
+    
+    Remember: Understanding these fundamentals will make you a better
+    ML practitioner and help you debug complex shape-related errors!
+    """
+    
+    print(next_steps)
+    print("\nHappy coding with NumPy! 🎯")
 
 
 if __name__ == "__main__":
+    # Run the complete tutorial
     main()
