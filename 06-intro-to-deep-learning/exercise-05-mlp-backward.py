@@ -1,27 +1,29 @@
+# Author: kira-ml (GitHub)
+# Educational Implementation: Neural Network Backpropagation from Scratch
+# Learn the fundamentals of how neural networks learn through gradient descent
+
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyBboxPatch
 import seaborn as sns
 
+# ============================================================================
+# LAYER IMPLEMENTATIONS: FORWARD AND BACKWARD PASSES
+# ============================================================================
 
 def affine_forward(x: np.ndarray, W: np.ndarray, b: np.ndarray):
     """Forward pass for affine (fully connected) layer.
     
-    Computes the linear transformation: output = x @ W + b
-    This is the fundamental building block of neural networks that learns
-    linear relationships in the data through weight matrix W and bias vector b.
+    This is the fundamental operation in neural networks:
+    y = xW + b
     
-    Args:
-        x (np.ndarray): Input data of shape (N, D) where N is batch size, D is input dimension
-        W (np.ndarray): Weight matrix of shape (D, M) where M is output dimension
-        b (np.ndarray): Bias vector of shape (M,)
-    
-    Returns:
-        tuple: 
-            - out (np.ndarray): Output of shape (N, M)
-            - cache (tuple): Cached inputs (x, W, b) for backward pass
+    Think of it as a weighted sum of inputs, similar to linear regression.
+    W (weights) determine importance of each input, b (bias) shifts the result.
     """
+    # Matrix multiplication: each row of x (a sample) gets multiplied by W
     out = x @ W + b
+    
+    # Cache stores inputs for backward pass - we'll need them for gradient computation
     cache = (x, W, b)
     return out, cache
 
@@ -29,43 +31,36 @@ def affine_forward(x: np.ndarray, W: np.ndarray, b: np.ndarray):
 def affine_backward(dout: np.ndarray, cache: tuple):
     """Backward pass for affine layer.
     
-    Computes gradients with respect to inputs, weights, and biases using
-    the chain rule from calculus. This enables gradient-based optimization
-    during neural network training.
+    Computes gradients using the chain rule:
+    - dx: how much should we change the input?
+    - dW: how much should we change the weights?
+    - db: how much should we change the biases?
     
-    Args:
-        dout (np.ndarray): Upstream gradient of shape (N, M)
-        cache (tuple): Cached inputs from forward pass (x, W, b)
-    
-    Returns:
-        tuple:
-            - dx (np.ndarray): Gradient with respect to x, shape (N, D)
-            - dW (np.ndarray): Gradient with respect to W, shape (D, M)
-            - db (np.ndarray): Gradient with respect to b, shape (M,)
+    These gradients tell our optimizer (like SGD) how to update parameters.
     """
+    # Unpack cached values from forward pass
     x, W, _ = cache
-    dx = dout @ W.T  # Gradient flows back to input
-    dW = x.T @ dout  # Weight gradient: outer product of input and upstream grad
-    db = np.sum(dout, axis=0)  # Bias gradient: sum over batch dimension
+    
+    # Gradient flows backward through the linear transformation
+    dx = dout @ W.T  # How input affects output (via weights)
+    dW = x.T @ dout  # How weights affect output (weighted by input)
+    db = np.sum(dout, axis=0)  # Bias gradient: sum over all samples in batch
+    
     return dx, dW, db
 
 
 def relu_forward(x: np.ndarray):
     """Forward pass for ReLU (Rectified Linear Unit) activation.
     
-    Applies element-wise ReLU: max(0, x). ReLU is preferred over sigmoid/tanh
-    because it mitigates the vanishing gradient problem and is computationally
-    efficient. It introduces non-linearity while keeping positive values unchanged.
+    ReLU = max(0, x) - it lets positive values pass unchanged, zeros negatives.
     
-    Args:
-        x (np.ndarray): Input data of any shape
-    
-    Returns:
-        tuple:
-            - out (np.ndarray): ReLU-activated output, same shape as x
-            - cache (np.ndarray): Original input x for backward pass
+    Why ReLU? It's simple, fast, and helps avoid the "vanishing gradient" problem
+    that plagued older activation functions like sigmoid.
     """
+    # Element-wise maximum: negative values become 0, positive stay as is
     out = np.maximum(0, x)
+    
+    # Cache original input - we'll need to know which inputs were positive/negative
     cache = x
     return out, cache
 
@@ -73,45 +68,44 @@ def relu_forward(x: np.ndarray):
 def relu_backward(dout: np.ndarray, cache: np.ndarray):
     """Backward pass for ReLU activation.
     
-    ReLU gradient is 1 for positive inputs, 0 for negative inputs.
-    This sparse gradient property helps with computational efficiency
-    and prevents neurons from updating when they're not active.
+    ReLU gradient is simple:
+    - 1 if input was positive (pass gradient through)
+    - 0 if input was negative (block gradient)
     
-    Args:
-        dout (np.ndarray): Upstream gradient, same shape as original input
-        cache (np.ndarray): Original input x from forward pass
-    
-    Returns:
-        np.ndarray: Gradient with respect to x, same shape as dout
+    This "sparsity" helps with efficient computation and prevents dead neurons
+    from updating unnecessarily.
     """
     x = cache
-    dx = dout * (x > 0)  # Only pass gradient through active neurons (x > 0)
+    
+    # Create mask: 1 where x > 0, 0 where x <= 0
+    # Only neurons that were "active" in forward pass get gradients
+    dx = dout * (x > 0)
+    
     return dx
 
 
 def two_layer_forward(x: np.ndarray, params: tuple):
     """Forward pass for two-layer MLP (Multi-Layer Perceptron).
     
-    Implements: Affine -> ReLU -> Affine
-    This architecture can approximate any continuous function (universal
-    approximation theorem) while being simple to implement and debug.
+    Architecture: Input → Affine → ReLU → Affine → Output
     
-    Args:
-        x (np.ndarray): Input data of shape (N, D)
-        params (tuple): Network parameters (W1, b1, W2, b2)
-    
-    Returns:
-        tuple:
-            - scores (np.ndarray): Output scores of shape (N, C) where C is num classes
-            - cache (tuple): Cached intermediate results for backward pass
+    This simple network can learn surprisingly complex patterns!
+    The Universal Approximation Theorem says even this simple architecture
+    can approximate any continuous function given enough neurons.
     """
+    # Unpack parameters: W1/b1 for first layer, W2/b2 for second layer
     W1, b1, W2, b2 = params
-    # First affine transformation: linear projection
+    
+    # First layer: linear transformation
     a1, fc1_cache = affine_forward(x, W1, b1)
-    # ReLU activation: introduces non-linearity
+    
+    # Activation: introduces non-linearity (essential for learning complex patterns)
     h1, relu_cache = relu_forward(a1)
-    # Second affine transformation: final classification layer
+    
+    # Second layer: final linear transformation to output space
     scores, fc2_cache = affine_forward(h1, W2, b2)
+    
+    # Cache everything for backward pass
     cache = (fc1_cache, relu_cache, fc2_cache)
     return scores, cache
 
@@ -119,28 +113,25 @@ def two_layer_forward(x: np.ndarray, params: tuple):
 def two_layer_backward(dout: np.ndarray, cache: tuple):
     """Backward pass for two-layer MLP.
     
-    Implements backpropagation through the computational graph in reverse order.
-    This efficiently computes gradients for all parameters using the chain rule,
-    enabling gradient descent optimization.
+    Implements backpropagation - the algorithm that makes deep learning possible!
     
-    Args:
-        dout (np.ndarray): Upstream gradient from loss function, shape (N, C)
-        cache (tuple): Cached intermediate results from forward pass
-    
-    Returns:
-        tuple:
-            - dx (np.ndarray): Gradient with respect to input x
-            - grads (tuple): Gradients for all parameters (dW1, db1, dW2, db2)
+    We compute gradients layer by layer, starting from the output and moving
+    backward through the network. This is efficient thanks to the chain rule
+    from calculus.
     """
+    # Unpack caches from forward pass
     fc1_cache, relu_cache, fc2_cache = cache
 
-    # Backprop through second affine layer
+    # Step 1: Backprop through second affine layer (output layer)
     dh1, dW2, db2 = affine_backward(dout, fc2_cache)
-    # Backprop through ReLU activation
+    
+    # Step 2: Backprop through ReLU activation
     da1 = relu_backward(dh1, relu_cache)
-    # Backprop through first affine layer
+    
+    # Step 3: Backprop through first affine layer (hidden layer)
     dx, dW1, db1 = affine_backward(da1, fc1_cache)
 
+    # Package all gradients for optimizer
     grads = (dW1, db1, dW2, db2)
     return dx, grads
 
@@ -148,58 +139,52 @@ def two_layer_backward(dout: np.ndarray, cache: tuple):
 def eval_loss(x: np.ndarray, params: tuple, target: np.ndarray):
     """Evaluate Mean Squared Error (MSE) loss.
     
-    MSE is used for regression tasks and provides smooth, convex optimization
-    landscape. The 0.5 factor simplifies gradient computation (derivative
-    removes the 2 from squared term).
+    MSE measures how far predictions are from targets.
+    Formula: 0.5 * Σ(prediction - target)²
     
-    Args:
-        x (np.ndarray): Input data
-        params (tuple): Network parameters
-        target (np.ndarray): Target values
-    
-    Returns:
-        float: MSE loss value
+    The 0.5 factor simplifies gradient calculation (derivative loses the 2).
     """
+    # Get predictions from forward pass
     scores, _ = two_layer_forward(x, params)
+    
+    # Compute MSE loss
     return 0.5 * np.sum((scores - target) ** 2)
 
 
 def numerical_gradient(f, x, h=1e-5):
     """Compute numerical gradient using central finite differences.
     
-    This method provides a gradient check by approximating derivatives
-    through small perturbations. Central differences are more accurate
-    than forward differences (O(h²) vs O(h) error).
+    This is a sanity check for our analytical gradients from backpropagation.
     
-    Args:
-        f (callable): Function to differentiate
-        x (np.ndarray): Point at which to compute gradient
-        h (float): Step size for finite differences
-    
-    Returns:
-        np.ndarray: Numerical gradient, same shape as x
+    How it works: for each parameter, we tweak it slightly (+h and -h),
+    see how the loss changes, and approximate the derivative.
+    Central differences (using both +h and -h) are more accurate than
+    one-sided differences.
     """
     grad = np.zeros_like(x)
-    # Iterate over all elements of the input array
+    
+    # Iterate through every element in the parameter array
     it = np.nditer(x, flags=['multi_index'], op_flags=['readwrite'])
 
     while not it.finished:
-        idx = it.multi_index
-        old_val = x[idx]
+        idx = it.multi_index  # Get current position (e.g., (0,0), (0,1), etc.)
+        old_val = x[idx]      # Save original value
 
-        # Evaluate function at x + h
+        # Compute f(x + h)
         x[idx] = old_val + h
         fxph = f(x)
 
-        # Evaluate function at x - h
+        # Compute f(x - h)
         x[idx] = old_val - h
         fxmh = f(x)
 
-        x[idx] = old_val  # Restore original value
+        # Restore original value (important!)
+        x[idx] = old_val
 
-        # Central difference formula for better accuracy
+        # Central difference formula: [f(x+h) - f(x-h)] / (2h)
         grad[idx] = (fxph - fxmh) / (2 * h)
-        it.iternext()
+        
+        it.iternext()  # Move to next element
 
     return grad
 
@@ -207,31 +192,35 @@ def numerical_gradient(f, x, h=1e-5):
 def relative_error(x, y):
     """Compute relative error between two arrays.
     
-    Relative error is more meaningful than absolute error for gradient
-    checking as it accounts for the scale of the values being compared.
+    Used to compare analytical gradients (from backprop) with numerical gradients.
     
-    Args:
-        x (np.ndarray): First array (typically analytical gradient)
-        y (np.ndarray): Second array (typically numerical gradient)
-    
-    Returns:
-        float: Relative error metric
+    Why relative error instead of absolute error?
+    A difference of 0.1 means different things if the values are 1.0 vs 1000.0.
+    Relative error accounts for scale.
     """
     return np.linalg.norm(x - y) / (np.linalg.norm(x) + np.linalg.norm(y))
 
 
+# ============================================================================
+# VISUALIZATION FUNCTIONS - SEE THE MATH COME TO LIFE!
+# ============================================================================
+
 def visualize_relu_activation():
-    """Create professional visualization of ReLU activation function."""
+    """Create visualization of ReLU activation function and its gradient."""
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
     
-    # ReLU function visualization
+    # Generate data points
     x = np.linspace(-3, 3, 1000)
-    y = np.maximum(0, x)
+    y = np.maximum(0, x)  # ReLU function
     
+    # Plot 1: ReLU function
     axes[0].plot(x, y, linewidth=3, color='#2E86AB', label='ReLU(x) = max(0, x)')
-    axes[0].plot(x, x, '--', linewidth=2, color='#A23B72', label='y = x')
+    axes[0].plot(x, x, '--', linewidth=2, color='#A23B72', label='y = x (reference)')
+    
+    # Highlight different regions
     axes[0].fill_between(x, y, where=(x > 0), alpha=0.3, color='#F18F01', label='Active Region')
     axes[0].fill_between(x, y, where=(x <= 0), alpha=0.3, color='#C73E1D', label='Inactive Region')
+    
     axes[0].set_title('ReLU Activation Function', fontsize=14, fontweight='bold')
     axes[0].set_xlabel('Input (x)')
     axes[0].set_ylabel('Output (ReLU(x))')
@@ -240,13 +229,14 @@ def visualize_relu_activation():
     axes[0].axhline(0, color='black', linewidth=0.5)
     axes[0].axvline(0, color='black', linewidth=0.5)
     
-    # Gradient visualization
+    # Plot 2: ReLU gradient
     x_grad = np.linspace(-3, 3, 1000)
-    y_grad = (x_grad > 0).astype(float)
+    y_grad = (x_grad > 0).astype(float)  # Gradient: 1 if x>0, 0 otherwise
     
     axes[1].plot(x_grad, y_grad, linewidth=3, color='#A23B72', label="ReLU'(x)")
     axes[1].fill_between(x_grad, y_grad, where=(x_grad > 0), alpha=0.3, color='#F18F01', label='Gradient = 1')
     axes[1].fill_between(x_grad, y_grad, where=(x_grad <= 0), alpha=0.3, color='#C73E1D', label='Gradient = 0')
+    
     axes[1].set_title('ReLU Gradient', fontsize=14, fontweight='bold')
     axes[1].set_xlabel('Input (x)')
     axes[1].set_ylabel("ReLU'(x)")
@@ -260,15 +250,17 @@ def visualize_relu_activation():
 
 
 def visualize_affine_transformation():
-    """Visualize the affine transformation process."""
+    """Visualize how affine transformation changes data."""
     fig, ax = plt.subplots(figsize=(10, 6))
     
-    # Create sample data
+    # Create random 2D data points
     x = np.random.randn(100, 2)
+    
+    # Define transformation: W rotates/scales, b shifts
     W = np.array([[1.5, 0.5], [0.2, 1.0]])
     b = np.array([0.5, -0.3])
     
-    # Apply transformation
+    # Apply transformation: y = xW + b
     transformed = x @ W + b
     
     # Plot original and transformed data
@@ -281,8 +273,8 @@ def visualize_affine_transformation():
     ax.grid(True, linestyle='--', alpha=0.6)
     ax.legend()
     
-    # Add arrow showing transformation
-    ax.annotate('Linear Transformation\nRotation + Scaling + Translation', 
+    # Add annotation to show transformation of one point
+    ax.annotate('Linear Transformation\n(Rotation + Scaling + Translation)', 
                 xy=(transformed[0, 0], transformed[0, 1]), 
                 xytext=(x[0, 0], x[0, 1]),
                 arrowprops=dict(arrowstyle='->', color='green', lw=2),
@@ -293,7 +285,7 @@ def visualize_affine_transformation():
 
 
 def visualize_network_flow():
-    """Visualize the forward and backward flow in the two-layer network."""
+    """Visualize forward and backward flow in neural network."""
     fig, axes = plt.subplots(2, 1, figsize=(12, 10))
     
     # Forward pass visualization
@@ -329,37 +321,40 @@ def visualize_network_flow():
 
 
 def visualize_gradient_checking():
-    """Visualize the concept of gradient checking."""
+    """Visualize gradient checking concept."""
     fig, ax = plt.subplots(figsize=(10, 6))
     
-    # Generate sample function
+    # Simple quadratic function: f(x) = x²
     x = np.linspace(-2, 2, 1000)
-    y = x**2  # Simple quadratic function
-    dy_dx = 2*x  # Analytical derivative
+    y = x**2
+    dy_dx = 2*x  # Analytical derivative: f'(x) = 2x
     
-    # Show central difference approximation
+    # Show central difference approximation at x = 0.5
     h = 0.2
     x0 = 0.5
     f_x0 = x0**2
     f_x0_h = (x0+h)**2
     f_x0_neg_h = (x0-h)**2
     
-    # Plot the function
+    # Plot function and its derivative
     ax.plot(x, y, label='$f(x) = x^2$', linewidth=2, color='blue')
     ax.plot(x, dy_dx, label="$f'(x) = 2x$", linewidth=2, color='red', linestyle='--')
     
-    # Show the points for numerical gradient
-    ax.plot([x0-h, x0, x0+h], [f_x0_neg_h, f_x0, f_x0_h], 'o', markersize=8, color='orange', label='Points for numerical gradient')
+    # Mark points used for numerical gradient calculation
+    ax.plot([x0-h, x0, x0+h], [f_x0_neg_h, f_x0, f_x0_h], 'o', markersize=8, 
+            color='orange', label='Points for numerical gradient')
     
-    # Draw the tangent line (analytical gradient)
+    # Draw tangent line (analytical gradient at x0)
     tangent_x = np.linspace(x0-1, x0+1, 100)
     tangent_y = f_x0 + 2*x0*(tangent_x - x0)
-    ax.plot(tangent_x, tangent_y, '--', color='green', linewidth=2, label=f'Tangent line (slope = {2*x0})')
+    ax.plot(tangent_x, tangent_y, '--', color='green', linewidth=2, 
+            label=f'Tangent line (slope = {2*x0})')
     
-    # Draw the secant line (numerical gradient)
+    # Draw secant line (numerical approximation)
     secant_slope = (f_x0_h - f_x0_neg_h) / (2*h)
     secant_y = f_x0 + secant_slope*(tangent_x - x0)
-    ax.plot(tangent_x, secant_y, ':', color='purple', linewidth=2, label=f'Secant line (slope ≈ {secant_slope:.2f})')
+    ax.plot(tangent_x, secant_y, ':', color='purple', linewidth=2, 
+            label=f'Secant line (slope ≈ {secant_slope:.2f})')
     
     ax.set_title('Gradient Checking: Analytical vs Numerical Gradients', fontsize=14, fontweight='bold')
     ax.set_xlabel('x')
@@ -371,60 +366,123 @@ def visualize_gradient_checking():
     plt.show()
 
 
+# ============================================================================
+# MAIN DEMONSTRATION - SEE EVERYTHING IN ACTION!
+# ============================================================================
+
 # Test ReLU implementation
 print("=== Testing ReLU Activation ===")
-x = np.array([[-1.0, 0.5], [2.0, -3.0]])
-out, cache = relu_forward(x)
-dout = np.ones_like(x)
-dx = relu_backward(dout, cache)
-print("ReLU forward output:\n", out)
-print("ReLU backward output:\n", dx)
-print("✓ ReLU correctly zeros negative values and passes positive values")
+print("ReLU: f(x) = max(0, x)")
+print("Gradient: f'(x) = 1 if x > 0, else 0")
 
-# Visualize ReLU
+# Create test input with both positive and negative values
+x = np.array([[-1.0, 0.5], [2.0, -3.0]])
+print(f"\nTest input:\n{x}")
+
+# Forward pass through ReLU
+out, cache = relu_forward(x)
+print(f"\nReLU output (negative values become 0):\n{out}")
+
+# Backward pass (simulating gradient from later layers)
+dout = np.ones_like(x)  # Gradient of 1 from next layer
+dx = relu_backward(dout, cache)
+print(f"\nReLU gradient (only positive inputs get gradient):\n{dx}")
+
+print("✓ ReLU correctly: zeros negatives, passes positives, blocks negative gradients")
+
+# Visualize ReLU function
 visualize_relu_activation()
 
 # Test Affine layer implementation
-print("\n=== Testing Affine Layer ===")
-np.random.seed(42)  # For reproducible tests
-x = np.random.randn(2, 3)
-W = np.random.randn(3, 4)
-b = np.random.randn(4)
+print("\n" + "="*50)
+print("=== Testing Affine Layer ===")
+print("Affine transformation: y = xW + b")
+
+# Set random seed for reproducibility
+np.random.seed(42)
+
+# Create test data
+x = np.random.randn(2, 3)  # 2 samples, 3 features each
+W = np.random.randn(3, 4)  # 3 input features → 4 output features
+b = np.random.randn(4)     # 4 biases (one per output feature)
+
+print(f"\nInput shape: {x.shape} (batch_size × input_dim)")
+print(f"Weight shape: {W.shape} (input_dim × output_dim)")
+print(f"Bias shape: {b.shape} (output_dim,)")
+
+# Forward pass
 out, cache = affine_forward(x, W, b)
-dout = np.random.randn(2, 4)
+print(f"\nOutput shape: {out.shape} (batch_size × output_dim)")
+
+# Backward pass
+dout = np.random.randn(2, 4)  # Simulated gradient from next layer
 dx, dW, db = affine_backward(dout, cache)
-print("Affine forward output shape:", out.shape)
-print("dx shape:", dx.shape, "(gradient w.r.t. input)")
-print("dW shape:", dW.shape, "(gradient w.r.t. weights)")
-print("db shape:", db.shape, "(gradient w.r.t. biases)")
-print("✓ Affine layer correctly transforms input and computes gradients")
+
+print(f"\nGradient shapes:")
+print(f"  dx (input gradient): {dx.shape} ← how input affects loss")
+print(f"  dW (weight gradient): {dW.shape} ← how weights affect loss")
+print(f"  db (bias gradient): {db.shape} ← how biases affect loss")
+
+print("✓ Affine layer correctly transforms and computes gradients")
 
 # Visualize affine transformation
 visualize_affine_transformation()
 
-# Test two-layer network and gradient checking
-print("\n=== Testing Two-Layer Network & Gradient Check ===")
+# Test complete two-layer network with gradient checking
+print("\n" + "="*50)
+print("=== Testing Two-Layer Network & Gradient Check ===")
+print("This validates our backpropagation implementation is correct!")
+
 np.random.seed(42)
-x = np.random.randn(3, 5)
-W1 = np.random.randn(5, 4)
+
+# Create a small network
+x = np.random.randn(3, 5)      # 3 samples, 5 features
+W1 = np.random.randn(5, 4)     # First layer: 5 → 4
 b1 = np.random.randn(4)
-W2 = np.random.randn(4, 2)
+W2 = np.random.randn(4, 2)     # Second layer: 4 → 2
 b2 = np.random.randn(2)
 params = (W1, b1, W2, b2)
+
+# Random targets for regression
 target = np.random.randn(3, 2)
 
-# Forward pass through network
+print(f"\nNetwork architecture:")
+print(f"  Input: {x.shape[1]} features")
+print(f"  Hidden layer: {W1.shape[1]} neurons")
+print(f"  Output: {W2.shape[1]} values")
+
+# Forward pass
 scores, cache = two_layer_forward(x, params)
 loss = eval_loss(x, params, target)
-dout = scores - target  # Gradient of MSE loss w.r.t. scores
+
+print(f"\nForward pass:")
+print(f"  Scores shape: {scores.shape} (predictions)")
+print(f"  Loss: {loss:.4f} (how wrong are predictions?)")
+
+# Backward pass (compute gradients analytically)
+dout = scores - target  # Gradient of MSE loss: ∂L/∂scores = scores - target
 _, grads = two_layer_backward(dout, cache)
 
-# Numerical gradient check for W1 - validates backprop implementation
+print(f"\nAnalytical gradients computed via backpropagation")
+
+# Numerical gradient check for W1
+print(f"\nGradient checking - comparing analytical vs numerical:")
+print("  (Should be < 1e-7 for correct implementation)")
+
+# Function that computes loss with only W1 varying
 f = lambda W: eval_loss(x, (W, b1, W2, b2), target)
+
+# Compute numerical gradient using finite differences
 num_dW1 = numerical_gradient(f, W1)
+
+# Compare with analytical gradient from backprop
 rel_err = relative_error(num_dW1, grads[0])
-print("Relative error W1:", rel_err)
-print("✓ Gradient check passed - analytical and numerical gradients match")
+print(f"  Relative error for W1: {rel_err:.2e}")
+
+if rel_err < 1e-7:
+    print("✓ Gradient check PASSED! Backprop implementation is correct.")
+else:
+    print("✗ Gradient check FAILED! Check backprop implementation.")
 
 # Visualize network flow
 visualize_network_flow()
@@ -432,23 +490,45 @@ visualize_network_flow()
 # Visualize gradient checking concept
 visualize_gradient_checking()
 
-# Print final shapes for verification
-print("\n=== Shape Verification ===")
-print("Scores shape:", scores.shape, "(batch_size × output_dim)")
-for i, g in enumerate(grads):
-    print(f"Grad {i} shape: {g.shape}")
+# Final summary
+print("\n" + "="*50)
+print("=== Shape Verification ===")
+print("All shapes should make sense for backpropagation:")
 
-# Create a final summary visualization
+print(f"\nForward pass shapes:")
+print(f"  Input: {x.shape}")
+print(f"  Scores: {scores.shape}")
+
+print(f"\nGradient shapes:")
+for i, g in enumerate(grads):
+    layer = ["W1", "b1", "W2", "b2"][i]
+    print(f"  d{layer}: {g.shape}")
+
+# Create final summary visualization
 fig, ax = plt.subplots(figsize=(12, 8))
-ax.text(0.05, 0.95, 'Neural Network Components Summary', fontsize=18, fontweight='bold', transform=ax.transAxes)
-ax.text(0.05, 0.85, '• Affine Layer: Performs linear transformation y = xW + b', fontsize=12, transform=ax.transAxes)
-ax.text(0.05, 0.80, '• ReLU Activation: Introduces non-linearity (max(0, x))', fontsize=12, transform=ax.transAxes)
-ax.text(0.05, 0.75, '• Backpropagation: Computes gradients using chain rule', fontsize=12, transform=ax.transAxes)
-ax.text(0.05, 0.70, '• Gradient Checking: Validates analytical gradients with numerical approximations', fontsize=12, transform=ax.transAxes)
-ax.text(0.05, 0.60, 'Implementation successfully tested with:', fontsize=14, fontweight='bold', transform=ax.transAxes)
+ax.text(0.05, 0.95, 'Neural Network Components Summary', 
+        fontsize=18, fontweight='bold', transform=ax.transAxes)
+ax.text(0.05, 0.85, '• Affine Layer: Performs linear transformation y = xW + b', 
+        fontsize=12, transform=ax.transAxes)
+ax.text(0.05, 0.80, '• ReLU Activation: Introduces non-linearity (max(0, x))', 
+        fontsize=12, transform=ax.transAxes)
+ax.text(0.05, 0.75, '• Backpropagation: Computes gradients using chain rule', 
+        fontsize=12, transform=ax.transAxes)
+ax.text(0.05, 0.70, '• Gradient Checking: Validates analytical gradients', 
+        fontsize=12, transform=ax.transAxes)
+
+ax.text(0.05, 0.60, 'Implementation successfully tested with:', 
+        fontsize=14, fontweight='bold', transform=ax.transAxes)
 ax.text(0.05, 0.55, '• Forward/backward passes', fontsize=12, transform=ax.transAxes)
-ax.text(0.05, 0.50, '• Gradient verification', fontsize=12, transform=ax.transAxes)
-ax.text(0.05, 0.45, '• Two-layer network training', fontsize=12, transform=ax.transAxes)
+ax.text(0.05, 0.50, '• Gradient verification (error: {:.2e})'.format(rel_err), 
+        fontsize=12, transform=ax.transAxes)
+ax.text(0.05, 0.45, '• Two-layer network', fontsize=12, transform=ax.transAxes)
+
+ax.text(0.05, 0.30, 'Key Insight:', fontsize=14, fontweight='bold', transform=ax.transAxes)
+ax.text(0.05, 0.25, 'Backpropagation is just the chain rule applied efficiently!', 
+        fontsize=12, transform=ax.transAxes)
+ax.text(0.05, 0.20, 'It lets us compute how every parameter affects the loss.', 
+        fontsize=12, transform=ax.transAxes)
 
 ax.set_xlim(0, 1)
 ax.set_ylim(0, 1)
@@ -456,3 +536,8 @@ ax.axis('off')
 
 plt.tight_layout()
 plt.show()
+
+print("\n" + "="*50)
+print("🎉 DEMONSTRATION COMPLETE!")
+print("You've implemented and validated a neural network from scratch!")
+print("\nNext steps: Try modifying the network architecture or loss function.")
