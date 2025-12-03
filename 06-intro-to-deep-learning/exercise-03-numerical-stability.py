@@ -1,31 +1,16 @@
 """
 numerical_stability_demo.py
 
-In this implementation I demonstrate common numerical stability issues that arise
-when working with floating-point numbers in machine learning pipelines, and I
-provide numerically stable alternatives. The code is structured as an
-educational module that:
+This educational module demonstrates numerical stability issues in machine learning
+and provides stable alternatives. Perfect for understanding why stability tricks
+are essential in ML pipelines.
 
-- Shows floating-point limits for float32 and float64.
-- Visualizes overflow and underflow regions for the exponential function.
-- Compares naive vs stable implementations of log-sum-exp, softmax, and
-  cross-entropy.
-- Runs a suite of test cases and explicitly demonstrates failure modes.
+Key concepts covered:
+- Floating-point limitations (overflow/underflow)
+- Stable implementations of log-sum-exp, softmax, and cross-entropy
+- Visual demonstrations of failure modes and solutions
 
-I wrote this to be used as an instructional script for engineers and
-researchers who want to understand *why* stability tricks (like the
-log-sum-exp shift) are necessary and *how* to apply them safely in both
-research and production ML code.
-
-Design notes (why I organized the module this way)
-- Functions are kept small and single-purpose so they can be reused in larger
-  training/evaluation pipelines or unit tests.
-- Stable implementations follow common numerical engineering patterns:
-    * subtracting the maximum (for log-sum-exp / softmax)
-    * clipping probabilities before log (for cross-entropy)
-  These are standard, battle-tested patterns used in production ML libraries.
-- Visualizations are separate from computation so the computational functions
-  can be unit-tested independently of plotting.
+Designed by kira-ml for open-source ML education.
 """
 
 from typing import Any, Dict, List
@@ -35,58 +20,54 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib.ticker import ScalarFormatter
 
-# ------------ Global plotting configuration (educational visuals) -------------
-# I set a neutral style and a qualitative palette to make plots readable and
-# consistent for teaching. These global settings are fine for notebooks or
-# demo scripts — in production dashboards you may want to set styles locally.
+# ============================================================================
+# SECTION 1: VISUALIZATION SETUP
+# ============================================================================
+# We configure plotting defaults for clear educational visuals
 plt.style.use('default')
-sns.set_palette("husl")
-plt.rcParams['figure.figsize'] = [10, 6]
-plt.rcParams['font.size'] = 10
+sns.set_palette("husl")  # Color-blind friendly palette
+plt.rcParams['figure.figsize'] = [10, 6]  # Standard size for tutorials
+plt.rcParams['font.size'] = 10  # Readable font size
 
+# ============================================================================
+# SECTION 2: FLOATING-POINT FUNDAMENTALS
+# ============================================================================
+# Understanding floating-point representation is crucial for debugging ML errors
 
-# ----------------------------- Utility functions ------------------------------
 def show_float_info() -> None:
     """
-    Print machine floating-point characteristics for float32 and float64.
-
-    Notes
-    -----
-    I print machine epsilon, maximum representable value, and the smallest
-    positive normal value (tiny). These values help explain why very large
-    exponentials overflow and very small exponentials underflow.
+    Display key properties of float32 and float64 data types.
+    
+    Why this matters: ML uses float32 by default for efficiency, but it has
+    limited range and precision compared to float64.
     """
     for dtype in (np.float32, np.float64):
         info = np.finfo(dtype)
-        # Using scientific formatting to make magnitude differences clear.
+        # Machine epsilon: smallest number that makes a difference when added to 1
+        # Max: largest representable positive number
+        # Tiny: smallest positive normalized number
         print(f"{dtype.__name__}: eps={info.eps:.3e}, max={info.max:.3e}, tiny={info.tiny:.3e}")
 
 
-# ------------------------------- Visualizations -------------------------------
 def visualize_float_limits() -> None:
     """
-    Create a two-panel plot that visualizes floating-point ranges and epsilon.
-
-    The left panel compares the maximum representable value and smallest positive
-    normal (tiny) value between float32 and float64 on a log scale. The right
-    panel compares machine epsilon for both dtypes.
-
-    This function saves a PNG and displays the figure. The plotting code is
-    separated from the numeric computations to make unit testing easy.
+    Visual comparison of float32 vs float64 limits.
+    
+    Key insight: float32 has ~7 decimal digits precision, float64 has ~15.
+    Overflow occurs when values exceed 'max', underflow when below 'tiny'.
     """
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
 
-    # Collect basic numeric facts for comparison.
+    # Data for comparison
     dtypes = ['float32', 'float64']
     max_values = [np.finfo(np.float32).max, np.finfo(np.float64).max]
     min_values = [np.finfo(np.float32).tiny, np.finfo(np.float64).tiny]
 
-    # Bar plot: max vs min positive (tiny). We use log scale to compress orders
-    # of magnitude differences into a readable plot.
+    # Plot 1: Range comparison (log scale needed for huge differences)
     x_pos = np.arange(len(dtypes))
     ax1.bar(x_pos - 0.2, max_values, width=0.4, label='Max Value', alpha=0.8)
     ax1.bar(x_pos + 0.2, min_values, width=0.4, label='Min Positive Value', alpha=0.8)
-    ax1.set_yscale('log')
+    ax1.set_yscale('log')  # Log scale because values span 10^300 range!
     ax1.set_ylabel('Value (log scale)')
     ax1.set_title('Floating Point Range Comparison')
     ax1.set_xticks(x_pos)
@@ -94,7 +75,7 @@ def visualize_float_limits() -> None:
     ax1.legend()
     ax1.grid(True, alpha=0.3)
 
-    # Machine epsilon comparison: shows relative precision difference.
+    # Plot 2: Precision comparison (machine epsilon)
     eps_values = [np.finfo(np.float32).eps, np.finfo(np.float64).eps]
     ax2.bar(dtypes, eps_values, alpha=0.8, color='orange')
     ax2.set_yscale('log')
@@ -109,22 +90,18 @@ def visualize_float_limits() -> None:
 
 def plot_overflow_underflow_demo() -> None:
     """
-    Plot exp(x) on linear and log scales to show where overflow and underflow occur.
-
-    I generate exp(x) over a wide domain and draw horizontal lines for the max
-    representable floats. Annotations are added to highlight where float32
-    would overflow/underflow. This visual is pedagogical — it intentionally
-    uses an extreme x-range to make the phenomenon explicit.
+    Visualize where exp(x) causes overflow and underflow.
+    
+    Critical for ML: Exponential functions appear in softmax, sigmoid, and 
+    many probability calculations. They're prone to numerical issues.
     """
-    # Wide range to show extreme behaviors; note that exp(1000) is astronomically
-    # large and will overflow to inf for float64 in many environments.
+    # Wide range to show extreme behaviors
     x = np.linspace(-1000, 1000, 1000)
-    exp_x = np.exp(x)
+    exp_x = np.exp(x)  # This will produce inf for large x!
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
 
-    # Linear scale: the plot will go to inf; axis limits are left automatic to
-    # emphasize overflow visually (but we draw reference lines).
+    # Linear scale plot - shows overflow as vertical spikes to infinity
     ax1.plot(x, exp_x, 'b-', linewidth=2)
     ax1.axhline(y=np.finfo(np.float32).max, color='r', linestyle='--',
                 label=f'float32 max ({np.finfo(np.float32).max:.1e})')
@@ -136,18 +113,17 @@ def plot_overflow_underflow_demo() -> None:
     ax1.legend()
     ax1.grid(True, alpha=0.3)
 
-    # Log scale: allows us to see multiplicative differences without clipping.
+    # Log scale plot - reveals underflow as values dropping to zero
     ax2.plot(x, exp_x, 'b-', linewidth=2)
     ax2.axhline(y=np.finfo(np.float32).max, color='r', linestyle='--')
     ax2.axhline(y=np.finfo(np.float64).max, color='g', linestyle='--')
-    ax2.set_yscale('log')
+    ax2.set_yscale('log')  # Log scale helps visualize tiny values
     ax2.set_xlabel('x')
     ax2.set_ylabel('exp(x) - log scale')
     ax2.set_title('Exponential Function - Log Scale')
     ax2.grid(True, alpha=0.3)
 
-    # Annotations: these are approximate visual markers (not computed crossing
-    # points). They illustrate the regions where underflow/overflow are observed.
+    # Educational annotations
     ax1.annotate('OVERFLOW REGION\n(float32 breaks here)',
                  xy=(700, 1e200), xytext=(500, 1e100),
                  arrowprops=dict(arrowstyle='->', color='red'),
@@ -162,28 +138,19 @@ def plot_overflow_underflow_demo() -> None:
     plt.savefig('overflow_underflow_demo.png', dpi=150, bbox_inches='tight')
     plt.show()
 
+# ============================================================================
+# SECTION 3: NUMERICALLY STABLE ALGORITHMS
+# ============================================================================
+# Core ML functions with both naive (unstable) and stable implementations
 
-# ---------------------- Numerical algorithms (stable vs naive) -----------------
 def naive_logsumexp(x: Any, axis: int = -1) -> np.ndarray:
     """
-    Numerically *unstable* log-sum-exp.
-
-    Parameters
-    ----------
-    x : array-like
-        Input array of values (e.g., logits).
-    axis : int, optional
-        Axis along which to compute log-sum-exp.
-
-    Returns
-    -------
-    ndarray
-        log(sum(exp(x), axis=axis))
-
-    Warning
-    -------
-    This naive form can overflow when elements of `x` are large (e.g., > 700 for
-    float64) because exp(x) grows extremely rapidly.
+    NAIVE VERSION - Prone to overflow!
+    
+    Computes log(sum(exp(x))) directly. Problem: exp(x) can overflow to infinity
+    when x > 709 for float64 or x > 88 for float32.
+    
+    Example failure: naive_logsumexp([1000, 1001, 1002]) → exp(1000) = inf
     """
     x = np.asarray(x)
     return np.log(np.sum(np.exp(x), axis=axis))
@@ -191,56 +158,31 @@ def naive_logsumexp(x: Any, axis: int = -1) -> np.ndarray:
 
 def stable_logsumexp(x: Any, axis: int = -1) -> np.ndarray:
     """
-    Numerically stable log-sum-exp implementation using the max-shift trick.
-
-    Parameters
-    ----------
-    x : array-like
-        Input array of values (e.g., logits).
-    axis : int, optional
-        Axis along which to compute log-sum-exp. Default is the last axis.
-
-    Returns
-    -------
-    ndarray
-        log(sum(exp(x), axis=axis))
-
-    Notes
-    -----
-    I subtract the max along the reduction axis before exponentiating. This
-    prevents exp from overflowing while preserving the correct result
-    algebraically. The `keepdims=True` pattern ensures correct broadcasting when
-    we add the max back.
+    STABLE VERSION - Uses the "max trick" to prevent overflow.
+    
+    Mathematical identity: log(sum(exp(x))) = max(x) + log(sum(exp(x - max(x))))
+    By subtracting max(x) before exp(), we keep values in safe range.
+    
+    This pattern is used in TensorFlow and PyTorch internally!
     """
     x = np.asarray(x)
-    # keepdims=True so we can add x_max back to the reduced log-sum easily.
+    # Find maximum along reduction axis (keep dimensions for broadcasting)
     x_max = np.max(x, axis=axis, keepdims=True)
-    shifted = x - x_max
-    # Compute sum(exp(shifted)) in the numerically safe regime.
+    
+    # Subtract max to prevent overflow, then compute safely
+    shifted = x - x_max  # Now all values ≤ 0, so exp(shifted) ≤ 1
     s = np.log(np.sum(np.exp(shifted), axis=axis, keepdims=True))
-    # Squeeze only the reduced axis to return an array with expected dimensions.
+    
+    # Add max back to get correct result
     return np.squeeze(x_max + s, axis=axis)
 
 
 def naive_softmax(x: Any, axis: int = -1) -> np.ndarray:
     """
-    Naive softmax computed directly from exponentials.
-
-    Parameters
-    ----------
-    x : array-like
-        Logits or pre-softmax scores.
-    axis : int, optional
-        Axis along which to compute softmax.
-
-    Returns
-    -------
-    ndarray
-        Probabilities that sum to 1 along `axis` in ideal (non-overflowing) cases.
-
-    Warning
-    -------
-    This implementation is susceptible to overflow when `x` contains large values.
+    NAIVE VERSION - Computes softmax directly.
+    
+    softmax(x_i) = exp(x_i) / sum(exp(x))
+    Problem: Both numerator and denominator can overflow!
     """
     x = np.asarray(x)
     exps = np.exp(x)
@@ -249,86 +191,49 @@ def naive_softmax(x: Any, axis: int = -1) -> np.ndarray:
 
 def stable_softmax(x: Any, axis: int = -1) -> np.ndarray:
     """
-    Numerically stable softmax using the max-shift trick.
-
-    Subtracting the max reduces the dynamic range before exponentiation, which
-    avoids overflow and yields identical results in exact arithmetic.
-
-    Parameters
-    ----------
-    x : array-like
-        Logits or pre-softmax scores.
-    axis : int, optional
-        Axis along which to compute softmax.
-
-    Returns
-    -------
-    ndarray
-        Numerically stable softmax probabilities.
+    STABLE VERSION - Uses same max trick as logsumexp.
+    
+    softmax(x_i) = exp(x_i - max(x)) / sum(exp(x - max(x)))
+    This is mathematically equivalent but numerically safe.
     """
     x = np.asarray(x)
     x_max = np.max(x, axis=axis, keepdims=True)
-    shifted = x - x_max
+    shifted = x - x_max  # Now values ≤ 0, safe for exp()
     exps = np.exp(shifted)
     return exps / np.sum(exps, axis=axis, keepdims=True)
 
 
 def naive_cross_entropy_from_probs(probs: Any, labels: Any) -> np.ndarray:
     """
-    Naive cross-entropy computed directly from predicted probabilities.
-
-    Parameters
-    ----------
-    probs : array-like
-        Predicted probabilities (should sum to 1 along the last axis).
-    labels : array-like
-        One-hot or soft labels with same shape as probs.
-
-    Returns
-    -------
-    ndarray
-        Per-example cross-entropy losses.
-
-    Warning
-    -------
-    If `probs` contains zeros, log(0) will produce -inf and break training.
+    NAIVE VERSION - Computes cross-entropy directly.
+    
+    CE = -sum(labels * log(probs))
+    Problem: log(0) = -inf if any probability is exactly 0.
     """
     return -np.sum(labels * np.log(probs), axis=-1)
 
 
 def stable_cross_entropy_from_probs(probs: Any, labels: Any, epsilon: float = 1e-12) -> np.ndarray:
     """
-    Stable cross-entropy from probabilities by clipping `probs` to avoid log(0).
-
-    Parameters
-    ----------
-    probs : array-like
-        Predicted probabilities.
-    labels : array-like
-        One-hot or soft labels.
-    epsilon : float, optional
-        Small constant to clip probabilities into (epsilon, 1-epsilon).
-
-    Returns
-    -------
-    ndarray
-        Per-example cross-entropy losses.
-
-    Notes
-    -----
-    Clipping is a simple and effective guard in production pipelines, but one
-    should choose `epsilon` small enough not to bias gradients noticeably.
+    STABLE VERSION - Clips probabilities to avoid log(0).
+    
+    Best practice: Clip to [epsilon, 1-epsilon] to prevent:
+    1. log(0) = -inf
+    2. log(1) = 0 with potential precision issues
+    
+    Note: Choose epsilon small enough to not affect gradients significantly.
     """
-    # Clip to (epsilon, 1 - epsilon) to avoid log(0) and to keep probabilities valid.
+    # Clip probabilities to safe range
     probs = np.clip(probs, epsilon, 1.0 - epsilon)
     return -np.sum(labels * np.log(probs), axis=-1)
 
 
 def naive_cross_entropy_from_logits(logits: Any, labels: Any) -> np.ndarray:
     """
-    Compute cross-entropy by converting logits to probabilities using naive softmax.
-
-    This compounds the instability of naive softmax (and naive cross-entropy).
+    NAIVE VERSION - Computes softmax then cross-entropy.
+    
+    This combines instability from both naive_softmax and naive_cross_entropy.
+    Double trouble for numerical stability!
     """
     probs = naive_softmax(logits)
     return naive_cross_entropy_from_probs(probs, labels)
@@ -336,62 +241,62 @@ def naive_cross_entropy_from_logits(logits: Any, labels: Any) -> np.ndarray:
 
 def stable_cross_entropy_from_logits(logits: Any, labels: Any) -> np.ndarray:
     """
-    Stable cross-entropy computed directly from logits using the log-sum-exp trick.
-
-    The expression used:
-        cross_entropy = logsumexp(logits) - sum(labels * logits)
-
-    This is algebraically equivalent to -sum(labels * log(softmax(logits)))
-    but avoids explicitly computing softmax, giving better numerical stability.
+    STABLE VERSION - Single-step computation using logsumexp trick.
+    
+    CE = logsumexp(logits) - sum(labels * logits)
+    This avoids computing softmax explicitly, reducing numerical errors.
+    
+    Used in production libraries like PyTorch's CrossEntropyLoss.
     """
-    # stable_logsumexp returns shape with reduced axis removed.
     log_sum_exp = stable_logsumexp(logits, axis=-1)
     weighted_logits = np.sum(labels * logits, axis=-1)
     return log_sum_exp - weighted_logits
 
+# ============================================================================
+# SECTION 4: TESTING AND VALIDATION
+# ============================================================================
+# Creating comprehensive test cases to demonstrate issues and solutions
 
-# ------------------------------- Test harness --------------------------------
 def create_test_cases() -> List[Dict[str, Any]]:
     """
-    Create a variety of test cases illustrating normal and pathological inputs.
-
-    Returns
-    -------
-    list of dict
-        Each dict contains 'name', 'logits', and 'labels'. The labels are
-        intentionally soft/one-hot to show differences across different inputs.
+    Create test cases ranging from normal to extreme values.
+    
+    Good practice: Test your ML functions with:
+    1. Normal values (typical use case)
+    2. Extreme values (stress test)
+    3. Edge cases (boundary conditions)
     """
     test_cases = []
 
-    # Normal case (small logits)
+    # Case 1: Normal values (typical ML scenario)
     test_cases.append({
         'name': 'Normal values',
         'logits': np.array([[1.0, 2.0, 3.0]], dtype=np.float32),
         'labels': np.array([[0.1, 0.3, 0.6]], dtype=np.float32)
     })
 
-    # Large positive values (causes overflow in naive implementations)
+    # Case 2: Large positives (overflow territory for float32)
     test_cases.append({
         'name': 'Large positive values',
         'logits': np.array([[100.0, 101.0, 102.0]], dtype=np.float32),
         'labels': np.array([[0.0, 0.0, 1.0]], dtype=np.float32)
     })
 
-    # Very large positive values (extreme overflow case)
+    # Case 3: Very large positives (definite overflow)
     test_cases.append({
         'name': 'Very large positive values',
         'logits': np.array([[1000.0, 1001.0, 1002.0]], dtype=np.float32),
         'labels': np.array([[0.0, 1.0, 0.0]], dtype=np.float32)
     })
 
-    # Large negative values (causes underflow in naive implementations)
+    # Case 4: Large negatives (underflow territory)
     test_cases.append({
         'name': 'Large negative values',
         'logits': np.array([[-1000.0, -1001.0, -1002.0]], dtype=np.float32),
         'labels': np.array([[1.0, 0.0, 0.0]], dtype=np.float32)
     })
 
-    # Mixed large and small values (stress test for relative scaling)
+    # Case 5: Mixed extremes (tests scaling behavior)
     test_cases.append({
         'name': 'Mixed large and small values',
         'logits': np.array([[-1000.0, 0.0, 1000.0]], dtype=np.float32),
@@ -403,18 +308,17 @@ def create_test_cases() -> List[Dict[str, Any]]:
 
 def compare_logsumexp_implementations() -> None:
     """
-    Compare naive and stable log-sum-exp implementations across several ranges.
-
-    The function catches exceptions in the naive implementation and records NaNs
-    for failed runs so that visualization still works. It saves and displays a
-    bar plot comparing results.
+    Compare naive vs stable logsumexp across different input ranges.
+    
+    Educational goal: Show that naive fails for extreme values,
+    while stable works for all cases.
     """
     test_ranges = [
-        np.array([-1000, -999, -998]),  # Very negative
-        np.array([-10, -9, -8]),        # Negative
-        np.array([0, 1, 2]),            # Around zero
-        np.array([10, 11, 12]),         # Positive
-        np.array([100, 101, 102])       # Large positive
+        np.array([-1000, -999, -998]),  # Very negative (underflow risk)
+        np.array([-10, -9, -8]),        # Negative (safe)
+        np.array([0, 1, 2]),            # Around zero (safe)
+        np.array([10, 11, 12]),         # Positive (safe)
+        np.array([100, 101, 102])       # Large positive (overflow risk)
     ]
 
     results = {'naive': [], 'stable': [], 'range_label': []}
@@ -423,35 +327,36 @@ def compare_logsumexp_implementations() -> None:
         range_label = f"Range {i+1}"
         results['range_label'].append(range_label)
 
-        # Naive may overflow/produce inf; catch any exceptions for the demo.
+        # Try naive version - may fail with overflow/underflow
         try:
             naive_result = naive_logsumexp(test_input)
-            results['naive'].append(np.asarray(naive_result).item())  # store scalar
+            results['naive'].append(np.asarray(naive_result).item())
         except Exception:
-            results['naive'].append(np.nan)
+            results['naive'].append(np.nan)  # Mark as failed
 
+        # Stable version should always work
         stable_result = stable_logsumexp(test_input)
         results['stable'].append(np.asarray(stable_result).item())
 
-    # Plot comparison (bar chart). Using log-scaling here would hide some small
-    # values; since values can span many orders, the demo uses linear values
-    # and expects NaNs for failed naive computations.
+    # Visualization of comparison
     fig, ax = plt.subplots(figsize=(12, 6))
     x_pos = np.arange(len(results['range_label']))
     width = 0.35
 
+    # Red bars for naive (may show NaN as missing)
     ax.bar(x_pos - width/2, results['naive'], width, label='Naive', alpha=0.7, color='red')
+    # Green bars for stable (should all have values)
     ax.bar(x_pos + width/2, results['stable'], width, label='Stable', alpha=0.7, color='green')
 
     ax.set_xlabel('Input Range (increasing values)')
     ax.set_ylabel('logsumexp Result')
-    ax.set_title('Comparison of Naive vs Stable logsumexp')
+    ax.set_title('Naive vs Stable logsumexp Comparison')
     ax.set_xticks(x_pos)
     ax.set_xticklabels(results['range_label'])
     ax.legend()
     ax.grid(True, alpha=0.3)
 
-    # Add value labels on bars where values are finite.
+    # Add value labels for educational clarity
     for i, v in enumerate(results['naive']):
         if not np.isnan(v):
             ax.text(i - width/2, v, f'{v:.2f}', ha='center', va='bottom')
@@ -466,19 +371,15 @@ def compare_logsumexp_implementations() -> None:
 
 def visualize_softmax_stability() -> None:
     """
-    Visualize softmax probabilities from naive and stable implementations
-    as input magnitude increases.
-
-    This demonstrates that the naive implementation becomes numerically
-    unreliable for very large inputs while the stable implementation
-    remains well-behaved.
+    Visualize how softmax behaves as input magnitude increases.
+    
+    Shows: Stable implementation remains well-behaved, naive becomes unstable.
     """
     magnitudes = np.linspace(0, 1000, 50)
     naive_results = []
     stable_results = []
 
-    # For each magnitude, construct a simple 3-class logits vector that is
-    # offset by the magnitude to stress the dynamic range.
+    # Test for increasing input magnitudes
     for mag in magnitudes:
         logits = np.array([[mag, mag + 1, mag + 2]])
 
@@ -486,7 +387,7 @@ def visualize_softmax_stability() -> None:
             naive_probs = naive_softmax(logits)
             naive_results.append(naive_probs[0])
         except Exception:
-            # When naive computation fails, store NaNs so plotting stays consistent.
+            # Naive fails for large magnitudes
             naive_results.append([np.nan, np.nan, np.nan])
 
         stable_probs = stable_softmax(logits)
@@ -497,7 +398,7 @@ def visualize_softmax_stability() -> None:
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
 
-    # Plot the probabilities for each class. Stable lines should remain smooth.
+    # Plot probabilities for each class
     for i in range(3):
         ax1.plot(magnitudes, stable_results[:, i], label=f'Class {i+1} (stable)', linewidth=2)
         ax1.plot(magnitudes, naive_results[:, i], '--', label=f'Class {i+1} (naive)', alpha=0.7)
@@ -508,14 +409,14 @@ def visualize_softmax_stability() -> None:
     ax1.legend()
     ax1.grid(True, alpha=0.3)
 
-    # Plot the absolute error between naive and stable implementations on a log y-scale.
+    # Plot errors (log scale shows orders of magnitude differences)
     errors = np.abs(naive_results - stable_results)
     for i in range(3):
         ax2.plot(magnitudes, errors[:, i], label=f'Class {i+1} error', linewidth=2)
 
     ax2.set_xlabel('Input Magnitude')
     ax2.set_ylabel('Absolute Error')
-    ax2.set_yscale('log')  # errors can span many orders of magnitude
+    ax2.set_yscale('log')  # Errors can be tiny or huge!
     ax2.set_title('Numerical Errors in Naive Softmax')
     ax2.legend()
     ax2.grid(True, alpha=0.3)
@@ -527,17 +428,10 @@ def visualize_softmax_stability() -> None:
 
 def run_comprehensive_tests() -> None:
     """
-    Execute a suite of tests comparing naive vs stable implementations.
-
-    For each test case this function:
-    - Prints the inputs.
-    - Attempts naive computations and records failures.
-    - Computes stable counterparts and prints them.
-    - Performs assertions when results are finite to check expected equalities.
-
-    Notes for production:
-    - In production test suites replace prints with logging and make assertions
-      raise test failures rather than halting scripts.
+    Run all test cases and compare implementations.
+    
+    Educational goal: Show concrete examples where naive implementations fail
+    and stable ones succeed.
     """
     test_cases = create_test_cases()
 
@@ -549,7 +443,7 @@ def run_comprehensive_tests() -> None:
         print(f"Logits: {logits}")
         print(f"Labels: {labels}")
 
-        # Test softmax implementations
+        # Test softmax
         try:
             naive_probs = naive_softmax(logits)
             print(f"Naive softmax: {naive_probs}")
@@ -562,7 +456,7 @@ def run_comprehensive_tests() -> None:
         print(f"Stable softmax: {stable_probs}")
         print(f"Stable softmax sum: {np.sum(stable_probs, axis=-1)}")
 
-        # Test logsumexp implementations
+        # Test logsumexp
         try:
             naive_lse = naive_logsumexp(logits)
             print(f"Naive logsumexp: {naive_lse}")
@@ -573,7 +467,7 @@ def run_comprehensive_tests() -> None:
         stable_lse = stable_logsumexp(logits)
         print(f"Stable logsumexp: {stable_lse}")
 
-        # Test cross-entropy implementations
+        # Test cross-entropy variations
         if naive_probs is not None:
             try:
                 naive_ce_probs = naive_cross_entropy_from_probs(naive_probs, labels)
@@ -596,8 +490,7 @@ def run_comprehensive_tests() -> None:
         stable_ce_logits = stable_cross_entropy_from_logits(logits, labels)
         print(f"Stable CE from logits: {stable_ce_logits}")
 
-        # Assertions: only run them when the numeric values are finite to avoid
-        # raising errors for intentionally pathological inputs in this demo.
+        # Assertions for valid cases
         if naive_probs is not None and not np.any(np.isnan(naive_probs)) and not np.any(np.isinf(naive_probs)):
             assert np.allclose(np.sum(naive_probs, axis=-1), 1.0, atol=1e-6), \
                 "Naive softmax should sum to 1"
@@ -606,7 +499,6 @@ def run_comprehensive_tests() -> None:
             "Stable softmax should sum to 1"
 
         if naive_lse is not None and not np.isnan(naive_lse).any() and not np.isinf(naive_lse).any():
-            # When both are finite, they should match up to numerical tolerance.
             assert np.allclose(np.asarray(naive_lse), np.asarray(stable_lse), atol=1e-6, rtol=1e-6), \
                 "Logsumexp implementations should match for valid cases"
 
@@ -615,22 +507,19 @@ def run_comprehensive_tests() -> None:
 
 def demonstrate_failure_modes() -> None:
     """
-    Explicitly demonstrate failure modes of naive implementations with prints.
-
-    This function runs targeted examples showing:
-    - Overflow in naive softmax (huge positive logits).
-    - Underflow in naive log-sum-exp (very negative logits).
-    - Precision differences between float32 and float64.
-    - A summary of floating-point info.
+    Explicitly demonstrate specific failure cases.
+    
+    Shows: What goes wrong, why it goes wrong, and how stable fixes help.
     """
     print("\n" + "="*60)
     print("DEMONSTRATING FAILURE MODES")
     print("="*60)
 
-    # 1) Overflow in naive softmax
+    # 1) Overflow example
     print("\n1. Overflow in naive softmax:")
     huge_logits = np.array([[1000.0, 1001.0, 1002.0]], dtype=np.float32)
     print(f"Logits: {huge_logits}")
+    print(f"exp(1000) would be ~10^434 - far beyond float32 max!")
 
     try:
         naive_probs = naive_softmax(huge_logits)
@@ -642,10 +531,11 @@ def demonstrate_failure_modes() -> None:
     print(f"Stable softmax: {stable_probs}")
     print(f"Stable softmax sum: {np.sum(stable_probs, axis=-1)}")
 
-    # 2) Underflow in naive logsumexp
+    # 2) Underflow example
     print("\n2. Underflow in naive logsumexp:")
     small_logits = np.array([[-1000.0, -1001.0, -1002.0]], dtype=np.float32)
     print(f"Logits: {small_logits}")
+    print(f"exp(-1000) would be ~10^-434 - far below float32 minimum!")
 
     try:
         naive_lse = naive_logsumexp(small_logits)
@@ -656,27 +546,30 @@ def demonstrate_failure_modes() -> None:
     stable_lse = stable_logsumexp(small_logits)
     print(f"Stable logsumexp: {stable_lse}")
 
-    # 3) Precision differences between float32 and float64
+    # 3) Precision comparison
     print("\n3. Precision differences between float32 and float64:")
     test_logits = np.array([[50.0, 51.0, 52.0]])
+    print("Same computation, different precision:")
 
     for dtype in [np.float32, np.float64]:
         logits = test_logits.astype(dtype)
         stable_result = stable_logsumexp(logits)
-        # This helps the reader see how dtype affects result precision.
         print(f"{dtype.__name__}: {stable_result}")
 
     # 4) Floating point info
     print("\n4. Floating point precision information:")
     show_float_info()
 
-
-# ---------------------------------- Runner -----------------------------------
+# ============================================================================
+# SECTION 5: MAIN EXECUTION
+# ============================================================================
 if __name__ == "__main__":
     print("🔬 Numerical Stability Educational Visualizations")
     print("="*50)
+    print("By kira-ml - Making ML fundamentals accessible!")
+    print()
 
-    # Run visualizations first for educational purposes
+    # Step-by-step educational journey
     print("\n1. Visualizing Floating Point Limits...")
     visualize_float_limits()
 
@@ -697,3 +590,7 @@ if __name__ == "__main__":
 
     print("\n🎓 Educational visualizations completed!")
     print("Check the generated PNG files for detailed visual explanations.")
+    print("\nKey takeaways:")
+    print("1. Always use stable implementations in production ML code")
+    print("2. Understand floating-point limitations for debugging")
+    print("3. Test with extreme values to catch numerical issues early")
