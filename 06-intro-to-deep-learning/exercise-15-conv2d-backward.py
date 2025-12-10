@@ -1,423 +1,514 @@
 # exercise-15-conv2d-backward.py
+"""Optimized Conv2D implementation with im2col for efficient computation."""
 
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
-import matplotlib.patches as mpatches
+from numba import jit, prange
+from typing import Tuple, Optional
+import time
 
-def im2col_indices(x, kh, kw, pad=0, stride=1):
-    """Convert image to column format for convolution."""
+# ============================================================================
+# Optimized im2col functions with Numba JIT compilation
+# ============================================================================
+
+@jit(nopython=True, parallel=True, cache=True)
+def im2col_numba(x: np.ndarray, kh: int, kw: int, pad: int = 0, stride: int = 1) -> np.ndarray:
+    """Optimized im2col using Numba for speed."""
     if pad > 0:
-        x = np.pad(x, ((0, 0), (0, 0), (pad, pad), (pad, pad)), mode='constant')
+        x_padded = np.zeros((x.shape[0], x.shape[1], x.shape[2] + 2*pad, x.shape[3] + 2*pad), dtype=x.dtype)
+        x_padded[:, :, pad:-pad, pad:-pad] = x
+        x = x_padded
     
     N, C, H, W = x.shape
-    
-    # Output dimensions
     out_h = (H - kh) // stride + 1
     out_w = (W - kw) // stride + 1
     
-    # Create arrays for indices
-    i0 = np.tile(np.arange(kh), kw)
-    i1 = np.repeat(np.arange(out_h), out_w) * stride
-    i = i0.reshape(-1, 1) + i1.reshape(1, -1)
+    # Pre-allocate output array
+    cols = np.zeros((kh * kw * C, N * out_h * out_w), dtype=x.dtype)
     
-    j0 = np.tile(np.arange(kw), kh)
-    j1 = np.tile(np.arange(out_w), out_h) * stride
-    j = j0.reshape(-1, 1) + j1.reshape(1, -1)
+    for n in prange(N):
+        for c in range(C):
+            for h in range(out_h):
+                for w in range(out_w):
+                    col_idx = n * out_h * out_w + h * out_w + w
+                    row_start = c * kh * kw
+                    
+                    for i in range(kh):
+                        for j in range(kw):
+                            row_idx = row_start + i * kw + j
+                            cols[row_idx, col_idx] = x[n, c, h*stride + i, w*stride + j]
     
-    k = np.repeat(np.arange(C), kh * kw).reshape(-1, 1)
-    
-    cols = x[:, k, i, j]
-    cols = cols.transpose(1, 2, 0).reshape(kh * kw * C, -1)
     return cols
 
-def col2im_indices(cols, x_shape, kh, kw, pad=0, stride=1):
-    """Convert column format back to image format."""
+@jit(nopython=True, parallel=True, cache=True)
+def col2im_numba(cols: np.ndarray, x_shape: Tuple, kh: int, kw: int, pad: int = 0, stride: int = 1) -> np.ndarray:
+    """Optimized col2im using Numba for speed."""
     N, C, H, W = x_shape
     H_pad, W_pad = H + 2*pad, W + 2*pad
     x_padded = np.zeros((N, C, H_pad, W_pad), dtype=cols.dtype)
     
-    k_size = kh * kw
-    out_h = (H + 2*pad - kh) // stride + 1
-    out_w = (W + 2*pad - kw) // stride + 1
+    out_h = (H_pad - kh) // stride + 1
+    out_w = (W_pad - kw) // stride + 1
     
-    # Reshape columns
-    cols_reshaped = cols.reshape(C * k_size, out_h * out_w, N)
-    cols_reshaped = cols_reshaped.transpose(2, 0, 1).reshape(N, C, k_size, out_h, out_w)
+    for n in prange(N):
+        for c in range(C):
+            for h in range(out_h):
+                for w in range(out_w):
+                    col_idx = n * out_h * out_w + h * out_w + w
+                    row_start = c * kh * kw
+                    
+                    for i in range(kh):
+                        for j in range(kw):
+                            row_idx = row_start + i * kw + j
+                            x_padded[n, c, h*stride + i, w*stride + j] += cols[row_idx, col_idx]
     
-    # Add values to appropriate locations in input
-    for i in range(kh):
-        for j in range(kw):
-            i_start = i
-            i_end = i_start + out_h * stride
-            j_start = j
-            j_end = j_start + out_w * stride
-            
-            x_padded[:, :, i_start:i_end:stride, j_start:j_end:stride] += cols_reshaped[:, :, i*kw + j, :, :]
+    return x_padded if pad == 0 else x_padded[:, :, pad:-pad, pad:-pad]
+
+# ============================================================================
+# Vectorized im2col functions (alternative implementation)
+# ============================================================================
+
+def im2col_vectorized(x: np.ndarray, kh: int, kw: int, pad: int = 0, stride: int = 1) -> np.ndarray:
+    """Vectorized im2col using as_strided for maximum performance."""
+    if pad > 0:
+        x = np.pad(x, ((0, 0), (0, 0), (pad, pad), (pad, pad)), mode='constant')
     
-    if pad == 0:
-        return x_padded
-    return x_padded[:, :, pad:-pad, pad:-pad]
+    N, C, H, W = x.shape
+    out_h = (H - kh) // stride + 1
+    out_w = (W - kw) // stride + 1
+    
+    # Create view into array with striding
+    shape = (N, C, out_h, out_w, kh, kw)
+    strides = (x.strides[0], x.strides[1], stride * x.strides[2], stride * x.strides[3], 
+               x.strides[2], x.strides[3])
+    
+    windows = np.lib.stride_tricks.as_strided(x, shape=shape, strides=strides, writeable=False)
+    
+    # Reshape to column format
+    cols = windows.transpose(1, 4, 5, 0, 2, 3).reshape(C * kh * kw, N * out_h * out_w)
+    
+    return cols
+
+def col2im_vectorized(cols: np.ndarray, x_shape: Tuple, kh: int, kw: int, pad: int = 0, stride: int = 1) -> np.ndarray:
+    """Vectorized col2im using numpy operations."""
+    N, C, H, W = x_shape
+    H_pad, W_pad = H + 2*pad, W + 2*pad
+    
+    # Reshape columns back
+    out_h = (H_pad - kh) // stride + 1
+    out_w = (W_pad - kw) // stride + 1
+    
+    cols_reshaped = cols.reshape(C, kh, kw, N, out_h, out_w)
+    
+    # Create output array
+    x_padded = np.zeros((N, C, H_pad, W_pad), dtype=cols.dtype)
+    
+    for c in range(C):
+        for i in range(kh):
+            for j in range(kw):
+                x_padded[:, c, i:i+out_h*stride:stride, j:j+out_w*stride:stride] += cols_reshaped[c, i, j]
+    
+    return x_padded if pad == 0 else x_padded[:, :, pad:-pad, pad:-pad]
+
+# ============================================================================
+# Optimized Conv2D Layer
+# ============================================================================
 
 class Conv2D:
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0):
+    """Optimized 2D Convolution layer with multiple acceleration options."""
+    
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int,
+                 stride: int = 1, padding: int = 0, use_numba: bool = False):
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size, kernel_size)
+        self.kernel_size = (kernel_size, kernel_size) if isinstance(kernel_size, int) else kernel_size
         self.stride = stride
         self.padding = padding
+        self.use_numba = use_numba
         
-        # Initialize weights and biases
-        self.W = np.random.randn(out_channels, in_channels, self.kernel_size[0], self.kernel_size[1]) * 0.1
+        # He initialization for better training
+        fan_in = in_channels * self.kernel_size[0] * self.kernel_size[1]
+        scale = np.sqrt(2.0 / fan_in)
+        self.W = np.random.randn(out_channels, in_channels, *self.kernel_size) * scale
         self.b = np.zeros((out_channels, 1))
         
-        # Cache for backward pass
+        # Cache
+        self.x_shape = None
         self.x_col = None
-        self.x = None
+        self.output_shape = None
+        
+        # Choose im2col implementation
+        self.im2col_fn = im2col_numba if use_numba else im2col_vectorized
+        self.col2im_fn = col2im_numba if use_numba else col2im_vectorized
     
-    def forward(self, x):
-        """Forward pass using im2col."""
-        self.x = x
+    def forward(self, x: np.ndarray) -> np.ndarray:
+        """Forward pass using optimized im2col."""
+        self.x_shape = x.shape
         N, C, H, W = x.shape
         
-        # Output dimensions
+        # Calculate output dimensions
         out_h = (H + 2*self.padding - self.kernel_size[0]) // self.stride + 1
         out_w = (W + 2*self.padding - self.kernel_size[1]) // self.stride + 1
+        self.output_shape = (N, self.out_channels, out_h, out_w)
         
         # Convert input to column format
-        self.x_col = im2col_indices(x, self.kernel_size[0], self.kernel_size[1], self.padding, self.stride)
+        self.x_col = self.im2col_fn(x, self.kernel_size[0], self.kernel_size[1], 
+                                   self.padding, self.stride)
         
-        # Reshape weights to matrix format
+        # Reshape weights for matrix multiplication
         w_row = self.W.reshape(self.out_channels, -1)
         
-        # Perform convolution as matrix multiplication
-        out = w_row @ self.x_col
-        out = out + self.b
-        out = out.reshape(self.out_channels, out_h, out_w, N)
-        out = out.transpose(3, 0, 1, 2)
+        # Matrix multiplication
+        out = w_row @ self.x_col + self.b
         
-        return out
+        # Reshape to output format
+        return out.reshape(self.out_channels, out_h, out_w, N).transpose(3, 0, 1, 2)
     
-    def backward(self, dout):
-        """Backward pass for Conv2D layer."""
+    def backward(self, dout: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Backward pass with optimized gradients."""
         N, F, out_h, out_w = dout.shape
         
-        # Reshape dout to column format
+        # Reshape gradient
         dout_reshaped = dout.transpose(1, 2, 3, 0).reshape(F, -1)
         
-        # Calculate bias gradient
-        db = np.sum(dout, axis=(0, 2, 3)).reshape(F, -1)
+        # Bias gradient (sum over all axes except output channels)
+        db = np.sum(dout, axis=(0, 2, 3), keepdims=True).reshape(F, 1)
         
-        # Calculate weight gradient
+        # Weight gradient
         dW = dout_reshaped @ self.x_col.T
         dW = dW.reshape(self.W.shape)
         
-        # Calculate input gradient
+        # Input gradient
         w_reshaped = self.W.reshape(F, -1)
         dx_col = w_reshaped.T @ dout_reshaped
-        dx = col2im_indices(dx_col, self.x.shape, self.kernel_size[0], self.kernel_size[1], self.padding, self.stride)
+        dx = self.col2im_fn(dx_col, self.x_shape, self.kernel_size[0], 
+                          self.kernel_size[1], self.padding, self.stride)
         
         return dx, dW, db
-
-def numerical_gradient(f, x, h=1e-4):
-    """Compute numerical gradient."""
-    grad = np.zeros_like(x)
-    it = np.nditer(x, flags=['multi_index'], op_flags=['readwrite'])
     
-    while not it.finished:
-        idx = it.multi_index
+    def update(self, dW: np.ndarray, db: np.ndarray, lr: float = 0.01) -> None:
+        """Update parameters with learning rate."""
+        self.W -= lr * dW
+        self.b -= lr * db
+
+# ============================================================================
+# Optimized Numerical Gradient
+# ============================================================================
+
+@jit(nopython=True, parallel=True, cache=True)
+def numerical_gradient_fast(f, x: np.ndarray, h: float = 1e-4) -> np.ndarray:
+    """Parallel numerical gradient computation."""
+    grad = np.zeros_like(x)
+    n_elements = x.size
+    
+    for i in prange(n_elements):
+        # Compute flat index
+        idx = np.unravel_index(i, x.shape)
         
-        # Calculate f(x + h)
-        x_plus = x.copy()
-        x_plus[idx] += h
-        f_plus = f(x_plus)
+        # Save original value
+        orig = x[idx]
         
-        # Calculate f(x - h)
-        x_minus = x.copy()
-        x_minus[idx] -= h
-        f_minus = f(x_minus)
+        # f(x + h)
+        x[idx] = orig + h
+        f_plus = f(x)
+        
+        # f(x - h)
+        x[idx] = orig - h
+        f_minus = f(x)
         
         # Central difference
         grad[idx] = (f_plus - f_minus) / (2 * h)
-        it.iternext()
+        
+        # Restore original value
+        x[idx] = orig
     
     return grad
 
+# ============================================================================
+# Optimized Visualization
+# ============================================================================
+
 def visualize_convolution_process():
-    """Visualize the convolution process."""
+    """Optimized convolution visualization."""
     fig, axes = plt.subplots(2, 4, figsize=(14, 7))
     fig.suptitle('Convolution Process Visualization', fontsize=16, fontweight='bold')
     
-    # Input image
-    input_img = np.array([[[1, 2, 3, 4],
-                           [5, 6, 7, 8],
-                           [9, 10, 11, 12],
-                           [13, 14, 15, 16]]])
+    # Input and kernel
+    input_img = np.arange(1, 17).reshape(1, 1, 4, 4)
+    kernel = np.array([[[1, 0], [-1, 0]]])
     
-    # Kernel
-    kernel = np.array([[[1, 0],
-                        [-1, 0]]])
+    # Pre-compute convolution using vectorized operations
+    patches = np.lib.stride_tricks.sliding_window_view(input_img[0, 0], (2, 2)).reshape(9, 2, 2)
+    conv_result = np.sum(patches * kernel[0], axis=(1, 2)).reshape(3, 3)
     
-    # Apply convolution
-    conv_result = np.zeros((1, 3, 3))
-    for i in range(3):
-        for j in range(3):
-            conv_result[0, i, j] = np.sum(input_img[0, i:i+2, j:j+2] * kernel[0])
+    # Plotting configurations
+    plots_config = [
+        (input_img[0, 0], 'viridis', 'Input Image\n(4x4)', axes[0, 0]),
+        (kernel[0], 'RdBu', 'Convolution Kernel\n(2x2)', axes[0, 1]),
+        (conv_result, 'viridis', 'Convolved Output\n(3x3)', axes[0, 2])
+    ]
     
-    # Plot input
-    im1 = axes[0, 0].imshow(input_img[0], cmap='viridis', interpolation='none')
-    axes[0, 0].set_title('Input Image\n(4x4)', fontweight='bold')
-    axes[0, 0].set_xticks(np.arange(4))
-    axes[0, 0].set_yticks(np.arange(4))
-    for i in range(4):
-        for j in range(4):
-            axes[0, 0].text(j, i, f'{input_img[0, i, j]:.0f}', ha='center', va='center', color='white')
-    axes[0, 0].grid(color='white', linewidth=1)
+    for data, cmap, title, ax in plots_config:
+        im = ax.imshow(data, cmap=cmap, interpolation='none', 
+                      vmin=-1 if cmap == 'RdBu' else None, 
+                      vmax=1 if cmap == 'RdBu' else None)
+        ax.set_title(title, fontweight='bold')
+        ax.set_xticks(range(data.shape[1]))
+        ax.set_yticks(range(data.shape[0]))
+        
+        # Add text annotations
+        for i in range(data.shape[0]):
+            for j in range(data.shape[1]):
+                color = 'white' if (cmap == 'RdBu' and data[i, j] < 0) or data[i, j] > 8 else 'black'
+                ax.text(j, i, f'{data[i, j]:.0f}', ha='center', va='center', color=color)
+        ax.grid(color='white', linewidth=1)
     
-    # Plot kernel
-    im2 = axes[0, 1].imshow(kernel[0], cmap='RdBu', interpolation='none', vmin=-1, vmax=1)
-    axes[0, 1].set_title('Convolution Kernel\n(2x2)', fontweight='bold')
-    axes[0, 1].set_xticks(np.arange(2))
-    axes[0, 1].set_yticks(np.arange(2))
-    for i in range(2):
-        for j in range(2):
-            axes[0, 1].text(j, i, f'{kernel[0, i, j]:.0f}', ha='center', va='center', 
-                           color='white' if kernel[0, i, j] < 0 else 'black')
-    axes[0, 1].grid(color='white', linewidth=1)
-    
-    # Plot convolution result
-    im3 = axes[0, 2].imshow(conv_result[0], cmap='viridis', interpolation='none')
-    axes[0, 2].set_title('Convolved Output\n(3x3)', fontweight='bold')
-    axes[0, 2].set_xticks(np.arange(3))
-    axes[0, 2].set_yticks(np.arange(3))
-    for i in range(3):
-        for j in range(3):
-            axes[0, 2].text(j, i, f'{conv_result[0, i, j]:.0f}', ha='center', va='center', color='white')
-    axes[0, 2].grid(color='white', linewidth=1)
-    
-    # Show im2col transformation
-    x_col = im2col_indices(input_img[np.newaxis, ...], 2, 2, pad=0, stride=1)
+    # im2col transformation
+    x_col = im2col_vectorized(input_img, 2, 2)
     axes[0, 3].imshow(x_col, cmap='Blues', aspect='auto')
     axes[0, 3].set_title('Im2Col Transformation\n(4x9)', fontweight='bold')
-    axes[0, 3].set_xlabel('Column Index')
-    axes[0, 3].set_ylabel('Flattened Kernel Elements')
     
-    # Show gradient visualization
-    axes[1, 0].text(0.5, 0.5, 'Input Gradient\nBackpropagation', 
-                    ha='center', va='center', fontsize=14, fontweight='bold',
-                    bbox=dict(boxstyle="round,pad=0.3", facecolor="lightblue"))
-    axes[1, 0].set_title('dx Computation', fontweight='bold')
-    axes[1, 0].set_xticks([])
-    axes[1, 0].set_yticks([])
+    # Gradient visualizations
+    gradient_info = [
+        ('dx Computation', 'Input Gradient\nBackpropagation', 'lightblue', axes[1, 0]),
+        ('dW Computation', 'Weight Gradient\nBackpropagation', 'lightgreen', axes[1, 1]),
+        ('db Computation', 'Bias Gradient\nBackpropagation', 'lightcoral', axes[1, 2]),
+        ('Gradient Checking', 'Numerical vs Analytical\nGradient Comparison', 'yellow', axes[1, 3])
+    ]
     
-    axes[1, 1].text(0.5, 0.5, 'Weight Gradient\nBackpropagation', 
-                    ha='center', va='center', fontsize=14, fontweight='bold',
-                    bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgreen"))
-    axes[1, 1].set_title('dW Computation', fontweight='bold')
-    axes[1, 1].set_xticks([])
-    axes[1, 1].set_yticks([])
-    
-    axes[1, 2].text(0.5, 0.5, 'Bias Gradient\nBackpropagation', 
-                    ha='center', va='center', fontsize=14, fontweight='bold',
-                    bbox=dict(boxstyle="round,pad=0.3", facecolor="lightcoral"))
-    axes[1, 2].set_title('db Computation', fontweight='bold')
-    axes[1, 2].set_xticks([])
-    axes[1, 2].set_yticks([])
-    
-    # Show gradient checking concept
-    axes[1, 3].text(0.5, 0.7, 'Numerical Gradient:', ha='center', fontsize=12, fontweight='bold')
-    axes[1, 3].text(0.5, 0.5, '(f(x+h) - f(x-h)) / 2h', ha='center', fontsize=14, 
-                    bbox=dict(boxstyle="round,pad=0.3", facecolor="yellow"))
-    axes[1, 3].text(0.5, 0.3, 'vs', ha='center', fontsize=12)
-    axes[1, 3].text(0.5, 0.1, 'Analytical Gradient', ha='center', fontsize=12, 
-                    bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray"))
-    axes[1, 3].set_title('Gradient Checking', fontweight='bold')
-    axes[1, 3].set_xticks([])
-    axes[1, 3].set_yticks([])
+    for title, text, color, ax in gradient_info:
+        ax.text(0.5, 0.5, text, ha='center', va='center', fontsize=11, fontweight='bold',
+                bbox=dict(boxstyle="round,pad=0.3", facecolor=color))
+        ax.set_title(title, fontweight='bold')
+        ax.set_xticks([])
+        ax.set_yticks([])
     
     plt.tight_layout()
     plt.show()
 
-def test_conv2d_gradients():
-    """Test Conv2D gradients using numerical gradient checking."""
-    print("Testing Conv2D gradients with numerical checks...")
-    
-    # Create a small input and layer
-    x = np.random.randn(1, 2, 4, 4)  # N, C, H, W
-    layer = Conv2D(in_channels=2, out_channels=3, kernel_size=2, stride=1, padding=0)
-    
-    # Forward pass
-    out = layer.forward(x)
-    
-    # Define loss function for gradient checking
-    def loss_fn(params):
-        # Temporarily replace layer parameters
-        original_W = layer.W.copy()
-        original_b = layer.b.copy()
-        
-        layer.W = params['W']
-        layer.b = params['b']
-        
-        out = layer.forward(x)
-        loss = np.sum(out ** 2)  # Simple quadratic loss
-        
-        # Restore original parameters
-        layer.W = original_W
-        layer.b = original_b
-        
-        return loss
-    
-    # Compute analytical gradients
-    dout = np.ones_like(out) * 2 * out  # Gradient of x^2 is 2x
-    dx, dW, db = layer.backward(dout)
-    
-    # Check W gradients
-    params = {'W': layer.W, 'b': layer.b}
-    num_dW = numerical_gradient(lambda w: loss_fn({'W': w, 'b': params['b']}), layer.W)
-    
-    print(f"Weight gradient max difference: {np.max(np.abs(dW - num_dW)):.6f}")
-    print(f"Weight gradient relative error: {np.mean(np.abs(dW - num_dW) / (np.abs(dW) + np.abs(num_dW) + 1e-8)):.6f}")
-    
-    # Check b gradients
-    num_db = numerical_gradient(lambda b: loss_fn({'W': params['W'], 'b': b}), layer.b)
-    
-    print(f"Bias gradient max difference: {np.max(np.abs(db - num_db)):.6f}")
-    print(f"Bias gradient relative error: {np.mean(np.abs(db - num_db) / (np.abs(db) + np.abs(num_db) + 1e-8)):.6f}")
-    
-    # Check x gradients
-    def loss_fn_x(x_input):
-        out = layer.forward(x_input)
-        return np.sum(out ** 2)
-    
-    num_dx = numerical_gradient(loss_fn_x, x)
-    print(f"Input gradient max difference: {np.max(np.abs(dx - num_dx)):.6f}")
-    print(f"Input gradient relative error: {np.mean(np.abs(dx - num_dx) / (np.abs(dx) + np.abs(num_dx) + 1e-8)):.6f}")
+# ============================================================================
+# Optimized Testing Functions
+# ============================================================================
 
-def train_toy_classifier():
-    """Train a tiny convolutional classifier on a toy dataset."""
-    print("\nTraining tiny CNN classifier on toy dataset...")
+def test_conv2d_gradients(use_numba: bool = False):
+    """Optimized gradient testing with timing."""
+    print(f"Testing Conv2D gradients ({'Numba' if use_numba else 'Vectorized'})...")
     
-    # Create a simple toy dataset with 2 classes
-    # Class 0: horizontal lines, Class 1: vertical lines
-    X = np.zeros((10, 1, 4, 4))  # 10 samples, 1 channel, 4x4
-    y = np.zeros(10)
+    # Create test data
+    np.random.seed(42)  # For reproducibility
+    x = np.random.randn(2, 3, 8, 8) * 0.1  # Larger batch for better timing
     
-    for i in range(5):
-        # Horizontal line class (0)
-        X[i, 0, 1, :] = 1.0
-        X[i, 0, 2, :] = 1.0
-        y[i] = 0
+    # Create layer
+    layer = Conv2D(in_channels=3, out_channels=4, kernel_size=3, 
+                  stride=1, padding=1, use_numba=use_numba)
     
-    for i in range(5, 10):
-        # Vertical line class (1)
-        X[i, 0, :, 1] = 1.0
-        X[i, 0, :, 2] = 1.0
-        y[i] = 1
+    # Time forward pass
+    start = time.perf_counter()
+    out = layer.forward(x)
+    forward_time = time.perf_counter() - start
     
-    # Create a simple CNN
-    conv = Conv2D(in_channels=1, out_channels=4, kernel_size=2, stride=1, padding=0)
-    # After conv: 4x4 -> 3x3 with 4 channels = 36 features
-    # We'll flatten and use a simple classifier
+    # Loss function closure
+    def create_loss_fn(layer, x):
+        def loss_fn(params):
+            orig_W, orig_b = layer.W.copy(), layer.b.copy()
+            layer.W, layer.b = params['W'], params['b']
+            loss = np.sum(layer.forward(x) ** 2)
+            layer.W, layer.b = orig_W, orig_b
+            return loss
+        return loss_fn
     
-    # Simple classifier weights (36 features -> 2 classes)
-    W_class = np.random.randn(2, 4*3*3) * 0.1
-    b_class = np.zeros((2, 1))
+    loss_fn = create_loss_fn(layer, x)
     
-    def forward_pass(x):
-        conv_out = conv.forward(x)
+    # Analytical gradients
+    dout = 2 * out  # Gradient of sum of squares
+    start = time.perf_counter()
+    dx, dW, db = layer.backward(dout)
+    backward_time = time.perf_counter() - start
+    
+    # Numerical gradients with timing
+    params = {'W': layer.W, 'b': layer.b}
+    
+    start = time.perf_counter()
+    num_dW = numerical_gradient_fast(lambda w: loss_fn({'W': w, 'b': params['b']}), layer.W)
+    num_db = numerical_gradient_fast(lambda b: loss_fn({'W': params['W'], 'b': b}), layer.b)
+    num_dx = numerical_gradient_fast(lambda x_in: np.sum(layer.forward(x_in) ** 2), x)
+    numerical_time = time.perf_counter() - start
+    
+    # Calculate errors
+    def relative_error(a, b):
+        return np.mean(np.abs(a - b) / (np.abs(a) + np.abs(b) + 1e-8))
+    
+    errors = {
+        'W': (np.max(np.abs(dW - num_dW)), relative_error(dW, num_dW)),
+        'b': (np.max(np.abs(db - num_db)), relative_error(db, num_db)),
+        'x': (np.max(np.abs(dx - num_dx)), relative_error(dx, num_dx))
+    }
+    
+    # Print results
+    print(f"Forward pass: {forward_time*1000:.2f} ms")
+    print(f"Backward pass: {backward_time*1000:.2f} ms")
+    print(f"Numerical gradients: {numerical_time*1000:.2f} ms")
+    
+    for param, (max_err, rel_err) in errors.items():
+        print(f"{param}: max error={max_err:.6e}, relative error={rel_err:.6e}")
+    
+    # Verify gradients
+    tolerance = 1e-5
+    all_pass = all(max_err < tolerance for max_err, _ in errors.values())
+    
+    if all_pass:
+        print("✓ All gradient checks passed!")
+    else:
+        print("✗ Some gradient checks failed!")
+    
+    return errors
+
+# ============================================================================
+# Optimized Training Function
+# ============================================================================
+
+class SimpleCNN:
+    """Optimized simple CNN for toy classification."""
+    
+    def __init__(self, in_channels=1, conv_channels=4, kernel_size=2, num_classes=2):
+        self.conv = Conv2D(in_channels, conv_channels, kernel_size)
+        self.W_class = np.random.randn(num_classes, conv_channels * 3 * 3) * 0.1
+        self.b_class = np.zeros((num_classes, 1))
+    
+    def forward(self, x, return_conv=False):
+        conv_out = self.conv.forward(x)
         flat = conv_out.reshape(conv_out.shape[0], -1)
-        scores = W_class @ flat.T + b_class
-        return scores.T, conv_out  # Return scores and intermediate conv output
+        scores = self.W_class @ flat.T + self.b_class
+        return (scores.T, conv_out) if return_conv else scores.T
     
-    def compute_loss(scores, targets):
-        # Softmax loss
-        exp_scores = np.exp(scores - np.max(scores, axis=1, keepdims=True))
-        probs = exp_scores / np.sum(exp_scores, axis=1, keepdims=True)
-        correct_logprobs = -np.log(probs[range(len(targets)), targets.astype(int)] + 1e-8)
-        return np.mean(correct_logprobs), probs
+    def backward(self, x, dscores):
+        conv_out = self.conv.forward(x)  # Recompute forward pass
+        flat = conv_out.reshape(conv_out.shape[0], -1)
+        
+        # Classifier gradients
+        dW_class = dscores.T @ flat
+        db_class = np.sum(dscores.T, axis=1, keepdims=True)
+        
+        # Convolution gradients
+        dconv_out = (dscores @ self.W_class).reshape(conv_out.shape)
+        dx, dW_conv, db_conv = self.conv.backward(dconv_out)
+        
+        return dx, dW_conv, db_conv, dW_class, db_class
     
-    # Training loop
-    learning_rate = 0.01
-    epochs = 50
+    def update(self, grads, lr=0.01):
+        dW_conv, db_conv, dW_class, db_class = grads
+        self.conv.update(dW_conv, db_conv, lr)
+        self.W_class -= lr * dW_class
+        self.b_class -= lr * db_class
+
+def train_toy_classifier(epochs=100, lr=0.01, batch_size=5):
+    """Optimized training with vectorized operations."""
+    print(f"\nTraining CNN classifier...")
     
-    losses = []
-    accuracies = []
+    # Create dataset efficiently
+    X = np.zeros((10, 1, 4, 4))
+    y = np.zeros(10, dtype=int)
+    
+    # Horizontal lines (class 0)
+    X[:5, 0, 1:3, :] = 1.0
+    # Vertical lines (class 1)
+    X[5:, 0, :, 1:3] = 1.0
+    y[5:] = 1
+    
+    # Initialize model
+    model = SimpleCNN()
+    
+    # Training storage
+    losses = np.zeros(epochs)
+    accuracies = np.zeros(epochs)
+    
+    # Pre-allocate arrays
+    onehot_y = np.eye(2)[y]
     
     for epoch in range(epochs):
         # Forward pass
-        scores, conv_out = forward_pass(X)
-        loss, probs = compute_loss(scores, y)
+        scores = model.forward(X)
         
-        # Compute accuracy
-        preds = np.argmax(scores, axis=1)
-        acc = np.mean(preds == y)
+        # Softmax with numerical stability
+        scores -= np.max(scores, axis=1, keepdims=True)
+        exp_scores = np.exp(scores)
+        probs = exp_scores / np.sum(exp_scores, axis=1, keepdims=True)
         
-        losses.append(loss)
-        accuracies.append(acc)
-        
-        if epoch % 10 == 0:
-            print(f"Epoch {epoch}, Loss: {loss:.4f}, Accuracy: {acc:.4f}")
+        # Loss and accuracy
+        losses[epoch] = -np.mean(np.log(probs[np.arange(10), y] + 1e-8))
+        accuracies[epoch] = np.mean(np.argmax(scores, axis=1) == y)
         
         # Backward pass
-        dscores = probs.copy()
-        dscores[range(len(y)), y.astype(int)] -= 1
+        dscores = probs - onehot_y
         dscores /= len(y)
         
-        # Backprop through classifier
-        dW_class = dscores.T @ conv_out.reshape(len(X), -1)
-        db_class = np.sum(dscores.T, axis=1, keepdims=True)
+        grads = model.backward(X, dscores)
+        model.update(grads[1:], lr)  # Skip dx
         
-        # Backprop to convolution layer
-        dconv_out = (dscores @ W_class).reshape(conv_out.shape)
-        dx, dW, db = conv.backward(dconv_out)
-        
-        # Update weights
-        W_class -= learning_rate * dW_class
-        b_class -= learning_rate * db_class
-        conv.W -= learning_rate * dW
-        conv.b -= learning_rate * db
+        if epoch % 20 == 0:
+            print(f"Epoch {epoch:3d}: Loss={losses[epoch]:.4f}, Acc={accuracies[epoch]:.4f}")
     
     # Final evaluation
-    final_scores, _ = forward_pass(X)
-    final_preds = np.argmax(final_scores, axis=1)
+    final_preds = np.argmax(model.forward(X), axis=1)
     final_acc = np.mean(final_preds == y)
+    print(f"Final accuracy: {final_acc:.4f}")
     
-    print(f"Final training accuracy: {final_acc:.4f}")
-    
-    # Visualize training progress
+    # Plot results
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
     
-    ax1.plot(losses, label='Training Loss', linewidth=2, color='blue')
-    ax1.set_title('Training Loss Over Time', fontweight='bold')
+    ax1.plot(losses, 'b-', linewidth=2)
+    ax1.set_title('Training Loss', fontweight='bold')
     ax1.set_xlabel('Epoch')
     ax1.set_ylabel('Loss')
-    ax1.grid(True, linestyle='--', alpha=0.6)
-    ax1.legend()
+    ax1.grid(True, alpha=0.3)
     
-    ax2.plot(accuracies, label='Training Accuracy', linewidth=2, color='green')
-    ax2.set_title('Training Accuracy Over Time', fontweight='bold')
+    ax2.plot(accuracies, 'g-', linewidth=2)
+    ax2.set_title('Training Accuracy', fontweight='bold')
     ax2.set_xlabel('Epoch')
     ax2.set_ylabel('Accuracy')
-    ax2.grid(True, linestyle='--', alpha=0.6)
-    ax2.legend()
+    ax2.grid(True, alpha=0.3)
     
     plt.tight_layout()
     plt.show()
     
     return final_acc
 
+# ============================================================================
+# Main Execution
+# ============================================================================
+
 if __name__ == "__main__":
-    print("Exercise 15: Conv Layer Backward and Gradients")
-    print("="*50)
+    print("=" * 60)
+    print("Exercise 15: Optimized Conv Layer Backward and Gradients")
+    print("=" * 60)
     
-    # Visualize the convolution process
+    # Set random seed for reproducibility
+    np.random.seed(42)
+    
+    # 1. Visualization
     visualize_convolution_process()
     
-    # Test gradients
-    test_conv2d_gradients()
+    # 2. Test both implementations
+    print("\n" + "=" * 60)
+    print("Testing Vectorized Implementation")
+    print("=" * 60)
+    errors_vec = test_conv2d_gradients(use_numba=False)
     
-    # Train toy classifier
-    final_accuracy = train_toy_classifier()
+    print("\n" + "=" * 60)
+    print("Testing Numba Implementation")
+    print("=" * 60)
+    errors_numba = test_conv2d_gradients(use_numba=True)
     
-    print("\nExercise completed successfully!")
-    print("All gradient checks passed and classifier trained on toy dataset.")
+    # 3. Train classifier
+    print("\n" + "=" * 60)
+    print("Training Toy Classifier")
+    print("=" * 60)
+    accuracy = train_toy_classifier(epochs=100, lr=0.01)
+    
+    print("\n" + "=" * 60)
+    print("SUMMARY")
+    print("=" * 60)
+    print("✓ Convolution process visualized")
+    print("✓ Gradient checks completed for both implementations")
+    print(f"✓ Toy classifier trained to {accuracy:.2%} accuracy")
+    print("=" * 60)
