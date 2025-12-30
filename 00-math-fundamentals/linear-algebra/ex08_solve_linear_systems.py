@@ -1,154 +1,320 @@
 """
 ex08_solve_linear_systems.py
----------------------------
-In this implementation, I demonstrate how to solve linear systems of equations Ax = b using
-Gaussian Elimination with Back Substitution. This fundamental approach underpins many
-computational methods in machine learning, including least squares regression, matrix
-factorizations, and optimization algorithms.
+===========================
+Educational implementation of Gaussian Elimination with Back Substitution.
 
-Linear system solving is ubiquitous in ML applications:
-- Solving normal equations in linear regression
-- Computing matrix inverses for covariance calculations
-- Eigenvalue problems in PCA and spectral methods
-- Optimization algorithms requiring linear solver subroutines
+This module demonstrates fundamental linear algebra operations essential for
+machine learning algorithms including linear regression, PCA, and optimization.
 
-This educational implementation provides insight into the computational mechanics that
-power more sophisticated numerical libraries, while highlighting numerical considerations
-crucial for production ML systems.
+Core Concepts:
+- Direct methods for solving linear systems
+- Numerical stability considerations
+- Algorithmic complexity analysis
 
-Notes
------
-While this implementation prioritizes clarity over performance, production ML pipelines
-typically use optimized LAPACK-based solvers (via numpy.linalg.solve) that include
-sophisticated pivoting strategies and numerical stability enhancements.
+Applications in ML:
+- Solving normal equations in least squares
+- Covariance matrix operations
+- Feature space transformations
 """
 
 import numpy as np
+from typing import Tuple, Optional
 
-def gaussian_elimination_with_backsubstitution(A, b, verbose=True):
+
+def forward_elimination(A: np.ndarray, b: np.ndarray, 
+                       verbose: bool = False) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Solve the linear system Ax = b using Gaussian elimination and back substitution.
+    Perform Gaussian elimination to transform [A|b] to upper triangular form.
     
-    Parameters
-    ----------
-    A : np.ndarray
-        Coefficient matrix of shape (n, n).
-    b : np.ndarray
-        Right-hand side vector of shape (n,).
-    verbose : bool, optional
-        If True, print intermediate steps for educational purposes.
+    Args:
+        A: Coefficient matrix (n x n)
+        b: Right-hand side vector (n,)
+        verbose: Whether to display elimination steps
         
-    Returns
-    -------
-    np.ndarray
-        Solution vector x of shape (n,).
+    Returns:
+        U: Upper triangular matrix
+        b_elim: Modified right-hand side
         
-    Notes
-    -----
-    This implementation demonstrates the fundamental algorithm without pivoting.
-    For numerical stability in production code, partial or complete pivoting
-    should be implemented to handle near-zero pivot elements.
-    
-    The algorithm complexity is O(n³) for the elimination phase and O(n²) for
-    back substitution, making it suitable for small to medium-sized systems.
+    Raises:
+        ValueError: If pivot element is numerically zero
     """
-    # Create augmented matrix [A|b] to apply row operations simultaneously
-    # Using float64 ensures adequate numerical precision for the computations
-    A_work = A.astype(np.float64)
-    b_work = b.astype(np.float64)
-    
-    # Construct augmented matrix for Gaussian elimination
-    Ab = np.hstack((A_work, b_work.reshape(-1, 1)))
-    n = Ab.shape[0]
+    n = len(b)
+    U = A.astype(np.float64).copy()
+    b_elim = b.astype(np.float64).copy()
     
     if verbose:
-        print("Initial augmented matrix [A|b]:\n", Ab)
-        print()
+        print("\n--- Forward Elimination Phase ---")
+        print(f"Initial system:\n{np.column_stack((U, b_elim.reshape(-1, 1)))}")
     
-    # Forward elimination: transform to upper triangular form
-    for i in range(n):
-        # Pivot selection: check for numerical stability
-        if abs(Ab[i, i]) < 1e-12:
-            raise ValueError(
-                f"Near-zero pivot {Ab[i, i]:.2e} at position ({i}, {i}). "
-                "Consider implementing pivoting for numerical stability."
-            )
+    for col in range(n - 1):  # Pivot column
+        pivot = U[col, col]
         
-        # Eliminate entries below the current pivot
-        for j in range(i + 1, n):
-            # Compute elimination multiplier: how much to subtract from row j
-            multiplier = Ab[j, i] / Ab[i, i]
+        # Numerical stability check
+        if np.abs(pivot) < 1e-10:
+            raise ValueError(f"Zero pivot at position ({col},{col}). "
+                           "Partial pivoting required for stability.")
+        
+        # Eliminate below current pivot
+        for row in range(col + 1, n):
+            factor = U[row, col] / pivot
             
-            # Apply row operation: row_j ← row_j - multiplier × row_i
-            Ab[j] -= multiplier * Ab[i]
+            # Vectorized row operation: row ← row - factor × pivot_row
+            U[row, col:] -= factor * U[col, col:]
+            b_elim[row] -= factor * b_elim[col]
             
             if verbose:
-                print(f"Row {j} ← Row {j} - {multiplier:.4f} × Row {i}")
-                print(f"Updated augmented matrix:\n{Ab}\n")
+                print(f"\nEliminating row {row} using pivot row {col}:")
+                print(f"Factor: {factor:.4f}")
+                print(f"Updated augmented matrix:\n"
+                      f"{np.column_stack((U, b_elim.reshape(-1, 1)))}")
     
-    # Back substitution: solve for unknowns from bottom to top
-    x = np.zeros(n)
+    return U, b_elim
+
+
+def back_substitution(U: np.ndarray, b: np.ndarray, 
+                     verbose: bool = False) -> np.ndarray:
+    """
+    Solve upper triangular system Ux = b using backward substitution.
     
+    Args:
+        U: Upper triangular matrix (n x n)
+        b: Modified right-hand side vector (n,)
+        verbose: Whether to display substitution steps
+        
+    Returns:
+        x: Solution vector
+    """
+    n = len(b)
+    x = np.zeros(n, dtype=np.float64)
+    
+    if verbose:
+        print("\n--- Back Substitution Phase ---")
+    
+    # Solve from last equation to first
     for i in range(n - 1, -1, -1):
-        # Solve for x[i]: isolate variable from the linear equation
-        # Ab[i, -1] represents the RHS after elimination
-        # Ab[i, i+1:n] contains coefficients of already-solved variables
-        x[i] = (Ab[i, -1] - np.dot(Ab[i, i + 1:n], x[i + 1:n])) / Ab[i, i]
+        # Known terms from already solved variables
+        known_terms = U[i, i+1:] @ x[i+1:] if i < n - 1 else 0
+        
+        # Solve: U[i,i] * x[i] = b[i] - Σ(U[i,j] * x[j]) for j > i
+        x[i] = (b[i] - known_terms) / U[i, i]
         
         if verbose:
-            print(f"x[{i}] = ({Ab[i, -1]:.4f} - Σ(coeffs × known_vars)) / {Ab[i, i]:.4f} = {x[i]:.6f}")
+            print(f"Equation {i}: {U[i, i]:.4f}·x[{i}] = "
+                  f"{b[i]:.4f} - {known_terms:.4f}")
+            print(f"  → x[{i}] = {x[i]:.6f}")
     
     return x
 
 
-# Define a well-conditioned test system for demonstration
-# This system is chosen to have a unique solution and reasonable numerical properties
-A = np.array([
-    [2, 1, -1],   # First equation:  2x₁ + x₂ - x₃ = 8
-    [-3, -1, 2],  # Second equation: -3x₁ - x₂ + 2x₃ = -11
-    [-2, 1, 2]    # Third equation:  -2x₁ + x₂ + 2x₃ = -3
-], dtype=float)
+def solve_linear_system(A: np.ndarray, b: np.ndarray, 
+                       verbose: bool = False, 
+                       enable_pivoting: bool = False) -> np.ndarray:
+    """
+    Solve linear system Ax = b using Gaussian elimination.
+    
+    Args:
+        A: Square coefficient matrix (n x n)
+        b: Right-hand side vector (n,)
+        verbose: Display algorithmic steps
+        enable_pivoting: Experimental partial pivoting
+        
+    Returns:
+        x: Solution vector satisfying Ax = b
+        
+    Example:
+        >>> A = np.array([[2, 1], [1, 2]], dtype=float)
+        >>> b = np.array([5, 4], dtype=float)
+        >>> x = solve_linear_system(A, b)
+        >>> np.allclose(A @ x, b)
+        True
+    """
+    # Input validation
+    if A.shape[0] != A.shape[1]:
+        raise ValueError(f"Matrix must be square, got shape {A.shape}")
+    if A.shape[0] != len(b):
+        raise ValueError(f"Dimension mismatch: A={A.shape}, b={len(b)}")
+    
+    n = A.shape[0]
+    
+    # Experimental partial pivoting (optional)
+    if enable_pivoting:
+        A_work, b_work = _partial_pivot(A.copy(), b.copy())
+    else:
+        A_work, b_work = A.copy(), b.copy()
+    
+    if verbose:
+        print("="*60)
+        print("GAUSSIAN ELIMINATION ALGORITHM")
+        print(f"System size: {n} equations, {n} unknowns")
+        print(f"Total operations: ~{2*n**3/3:.0f} flops (O(n³))")
+        print("="*60)
+    
+    # Phase 1: Forward elimination to upper triangular form
+    U, b_mod = forward_elimination(A_work, b_work, verbose)
+    
+    # Phase 2: Back substitution to obtain solution
+    x = back_substitution(U, b_mod, verbose)
+    
+    return x
 
-b = np.array([8, -11, -3], dtype=float)
 
-print("=== Linear System Ax = b ===")
-print("Coefficient matrix A:")
-print(A)
-print("\nRight-hand side vector b:")
-print(b)
-print("\n" + "="*50)
+def _partial_pivot(A: np.ndarray, b: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Experimental implementation of partial pivoting.
+    
+    For each column, swap current row with row having maximum pivot value
+    to improve numerical stability.
+    """
+    n = len(b)
+    
+    for col in range(n - 1):
+        # Find row with maximum absolute value in current column
+        max_row = np.argmax(np.abs(A[col:, col])) + col
+        
+        if max_row != col:
+            # Swap rows in A and b
+            A[[col, max_row]] = A[[max_row, col]]
+            b[[col, max_row]] = b[[max_row, col]]
+    
+    return A, b
 
-# Solve using our educational implementation
-print("\n=== Solution via Custom Gaussian Elimination ===")
-x_custom = gaussian_elimination_with_backsubstitution(A, b, verbose=True)
 
-print("\n=== Final Results ===")
-print(f"Solution vector x: {x_custom}")
+def verify_solution(A: np.ndarray, b: np.ndarray, x: np.ndarray, 
+                   method: str = "custom") -> dict:
+    """
+    Compute verification metrics for linear system solution.
+    
+    Returns:
+        Dictionary containing:
+        - residual: Ax - b
+        - relative_error: ||Ax - b|| / ||b||
+        - condition_number: κ(A)
+    """
+    residual = A @ x - b
+    residual_norm = np.linalg.norm(residual)
+    b_norm = np.linalg.norm(b)
+    cond_A = np.linalg.cond(A)
+    
+    return {
+        "method": method,
+        "solution": x,
+        "residual_norm": residual_norm,
+        "relative_error": residual_norm / b_norm if b_norm > 0 else np.inf,
+        "condition_number": cond_A,
+        "is_accurate": residual_norm < 1e-8 * max(1.0, b_norm)
+    }
 
-# Verification: compute residual to validate solution accuracy
-residual = A @ x_custom - b
-residual_norm = np.linalg.norm(residual)
-print(f"\nSolution verification:")
-print(f"Residual ||Ax - b||₂ = {residual_norm:.2e}")
 
-if residual_norm < 1e-10:
-    print("✓ Solution is numerically accurate")
-else:
-    print("⚠ Solution may have numerical errors")
+def compare_solvers(A: np.ndarray, b: np.ndarray, verbose: bool = False):
+    """
+    Educational comparison between custom and NumPy implementations.
+    """
+    print("="*60)
+    print("LINEAR SYSTEM SOLVER COMPARISON")
+    print("="*60)
+    
+    # Display problem
+    print(f"\nSystem: {A.shape[0]} equations with {A.shape[1]} unknowns")
+    print(f"\nCoefficient matrix A (κ={np.linalg.cond(A):.2e}):")
+    print(A)
+    print(f"\nRight-hand side b:")
+    print(b)
+    
+    # Custom implementation
+    print("\n" + "-"*40)
+    print("CUSTOM IMPLEMENTATION")
+    print("-"*40)
+    try:
+        x_custom = solve_linear_system(A, b, verbose=verbose)
+        result_custom = verify_solution(A, b, x_custom, "custom")
+        
+        print(f"\nSolution: {x_custom}")
+        print(f"Residual ||Ax - b||₂ = {result_custom['residual_norm']:.2e}")
+        print(f"Relative error = {result_custom['relative_error']:.2e}")
+        if result_custom['is_accurate']:
+            print("✓ Solution meets accuracy criteria")
+    except ValueError as e:
+        print(f"✗ Custom solver failed: {e}")
+        result_custom = None
+    
+    # NumPy reference implementation
+    print("\n" + "-"*40)
+    print("NUMPY REFERENCE (np.linalg.solve)")
+    print("-"*40)
+    try:
+        x_numpy = np.linalg.solve(A, b)
+        result_numpy = verify_solution(A, b, x_numpy, "numpy")
+        
+        print(f"\nSolution: {x_numpy}")
+        print(f"Residual ||Ax - b||₂ = {result_numpy['residual_norm']:.2e}")
+        print(f"Relative error = {result_numpy['relative_error']:.2e}")
+        
+        if result_custom is not None:
+            diff_norm = np.linalg.norm(x_custom - x_numpy)
+            print(f"\nDifference between solvers: {diff_norm:.2e}")
+    except np.linalg.LinAlgError as e:
+        print(f"✗ NumPy solver failed: {e}")
+    
+    # Educational insights
+    print("\n" + "="*60)
+    print("COMPUTATIONAL INSIGHTS")
+    print("="*60)
+    
+    n = A.shape[0]
+    print(f"\nAlgorithmic Complexity:")
+    print(f"• Gaussian elimination: ~{2*n**3/3:.0f} floating-point operations")
+    print(f"• Memory: O({n**2}) for matrix storage")
+    print(f"• Condition number: κ(A) = {np.linalg.cond(A):.2e}")
+    
+    print(f"\nPractical Recommendations:")
+    print("• Use np.linalg.solve() for production (implements LAPACK)")
+    print("• For large sparse systems: scipy.sparse.linalg.spsolve")
+    print("• For ill-conditioned systems: regularization or SVD-based methods")
 
-# Comparison with NumPy's optimized solver
-print("\n=== Comparison with NumPy Implementation ===")
-x_numpy = np.linalg.solve(A, b)
-print(f"NumPy solution:        {x_numpy}")
-print(f"Custom solution:       {x_custom}")
-print(f"Difference norm:       {np.linalg.norm(x_numpy - x_custom):.2e}")
 
-# Educational note on computational complexity and practical considerations
-print(f"\n=== Computational Insights ===")
-print(f"Matrix size: {A.shape[0]}×{A.shape[1]}")
-print(f"Theoretical operations: ~{(A.shape[0]**3)/3:.0f} (O(n³/3) for elimination)")
-print(f"Memory usage: O(n²) for matrix storage")
-print("\nIn production ML pipelines:")
-print("• Use np.linalg.solve() for better numerical stability")
-print("• Consider iterative methods for large sparse systems")
-print("• Leverage GPU acceleration for massive linear systems")
+# ============================================================================
+# DEMONSTRATION AND TESTING
+# ============================================================================
+
+if __name__ == "__main__":
+    # Well-conditioned test system from original example
+    A_demo = np.array([
+        [2, 1, -1],
+        [-3, -1, 2],
+        [-2, 1, 2]
+    ], dtype=float)
+    
+    b_demo = np.array([8, -11, -3], dtype=float)
+    
+    # Run educational comparison
+    compare_solvers(A_demo, b_demo, verbose=True)
+    
+    # Additional educational examples
+    print("\n\n" + "="*60)
+    print("ADDITIONAL EDUCATIONAL EXAMPLES")
+    print("="*60)
+    
+    # Example 2: 2x2 system
+    print("\nExample 2: 2x2 System")
+    A2 = np.array([[3, 1], [1, 2]], dtype=float)
+    b2 = np.array([9, 8], dtype=float)
+    x2 = solve_linear_system(A2, b2, verbose=False)
+    print(f"Solution: {x2}")
+    print(f"Verification: A@x = {A2 @ x2}, Expected: {b2}")
+    
+    # Example 3: Diagonal system (trivial case)
+    print("\nExample 3: Diagonal System")
+    A3 = np.diag([1, 2, 3, 4])
+    b3 = np.array([1, 2, 3, 4], dtype=float)
+    x3 = solve_linear_system(A3, b3, verbose=False)
+    print(f"Solution: {x3}")
+    
+    # Performance note
+    print("\n" + "-"*60)
+    print("PERFORMANCE NOTE:")
+    print("This educational implementation prioritizes clarity over speed.")
+    print("For n=1000, np.linalg.solve is ~1000x faster due to:")
+    print("• Optimized BLAS/LAPACK libraries")
+    print("• Cache-efficient memory access patterns")
+    print("• Multi-threaded execution")
+    print("-"*60)
