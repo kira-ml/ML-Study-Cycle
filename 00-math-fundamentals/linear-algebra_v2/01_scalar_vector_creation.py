@@ -1,60 +1,107 @@
+"""
+NumPy Fundamentals: Scalars vs. Vectors
+---------------------------------------
+Demonstrates the structural and operational distinctions between
+scalar values (0-D) and vector arrays (1-D) in numerical computing.
+"""
+
+import sys
+from typing import Final
+
 import numpy as np
+import numpy.typing as npt
 
-"""
-NumPy Fundamentals: Understanding Scalars and Vectors
-This tutorial demonstrates the distinction between scalar values and vector
-arrays in numerical computing, highlighting their characteristics and use cases.
-"""
+# Enforce explicit precision
+DTYPE: Final = np.float64
 
-# PART 1: Scalar Values - Single Data Points
-# Scalars represent single numerical values without dimensionality.
-# Common examples: temperature readings, prices, measurements, or constants.
-temperature = 98.6  # A scalar representing a single temperature value
+def print_header(title: str) -> None:
+    """Utility to print formatted section headers."""
+    print(f"\n{title}")
+    print("=" * 60)
 
-print("Part 1: Scalar Value Demonstration")
-print(f"Temperature: {temperature}")
-print(f"Data type: {type(temperature)}")
-print(f"Is this a scalar? Yes - it represents a single numerical value: {temperature}")
-print("Characteristics: No dimensional attributes, operates as individual data point")
-print()
+def demonstrate_scalar(value: float) -> None:
+    """
+    Analyze and display properties of a scalar value.
 
-# PART 2: Vector Arrays - Ordered Collections
-# Vectors are 1-dimensional arrays containing multiple ordered elements.
-# Applications: feature sets, coordinates, time series data, parameter vectors.
-feature_vector = np.array([2.5, -1.0, 4.7, 0.3])  # Four-element feature vector
+    Parameters
+    ----------
+    value : float
+        The scalar input to analyze.
+    """
+    print_header("PART 1: Scalar Values (0-Dimensional)")
+    
+    # Structural properties
+    print(f"Value          : {value}")
+    print(f"Python Type    : {type(value).__name__}")
+    print(f"Dimensionality : 0 (Point data)")
+    
+    # Operation demonstration
+    offset = 5.0
+    result = value + offset
+    print(f"Operation      : {value} + {offset} = {result}")
+    print("Constraint     : Cannot be indexed or sliced.")
 
-print("Part 2: Vector Array Demonstration")
-print(f"Feature vector: {feature_vector}")
-print(f"Data type: {type(feature_vector)} (NumPy ndarray)")
-print(f"Shape attribute: {feature_vector.shape}")
-print("Note: (4,) indicates a 1-dimensional array with 4 elements")
-print(f"Element count: {len(feature_vector)} features")
-print("Application: Ordered numerical collections for mathematical operations")
-print()
+def demonstrate_vector(vec: npt.NDArray[DTYPE]) -> None:
+    """
+    Analyze and display properties of a vector array.
 
-# PART 3: Scalar vs Vector Comparison
-# This section contrasts their properties and operational capabilities.
-print("Part 3: Scalar vs Vector Comparison")
-print("=" * 60)
+    Parameters
+    ----------
+    vec : npt.NDArray[np.float64]
+        The 1-D vector array to analyze.
+    """
+    print_header("PART 2: Vector Arrays (1-Dimensional)")
 
-print("Scalar Properties (temperature):")
-print(f"  Value: {temperature} (single numerical element)")
-print(f"  Dimensionality: 0-dimensional (point data)")
-print(f"  Mathematical operation: temperature + 5 = {temperature + 5}")
-print("  Limitation: Cannot access individual elements or perform vector operations")
+    # Structural properties
+    print(f"Vector Content : {vec}")
+    print(f"NumPy Type     : {type(vec).__name__}")
+    print(f"Data Type      : {vec.dtype}")
+    print(f"Shape          : {vec.shape} (1-D array with {vec.size} elements)")
+    print(f"Dimensionality : {vec.ndim}-D")
+    print(f"Memory Usage   : {vec.nbytes} bytes")
 
-print("\nVector Properties (feature_vector):")
-print(f"  Value: {feature_vector} (ordered element collection)")
-print(f"  Dimensionality: 1-dimensional (linear array)")
-print(f"  Mathematical operation: feature_vector + 5 = {feature_vector + 5}")
-print("  Note: Broadcasting applies scalar operation to all elements")
-print(f"  Element access: feature_vector[0] = {feature_vector[0]} (index-based retrieval)")
-print(f"  Element access: feature_vector[1] = {feature_vector[1]} (second position)")
-print("  Capability: Supports indexing, slicing, and vectorized operations")
+    # Access patterns
+    print("\n[Access Patterns]")
+    print(f"Index [0]      : {vec[0]}")
+    print(f"Slice [0:2]    : {vec[0:2]}")
 
-print("\n" + "=" * 60)
-print("Summary:")
-print("• Scalar: Individual numerical value with no dimensional structure")
-print("• Vector: Ordered 1-dimensional array enabling element-wise operations")
-print("• Both essential for numerical computing with distinct mathematical properties")
-print()
+    # Vectorization (Broadcasting)
+    # This is the key optimization over scalars: applying ops to all elements at once
+    offset = 5.0
+    broadcast_result = vec + offset
+    
+    print("\n[Vectorized Operation - Broadcasting]")
+    print(f"Logic          : array + {offset} (Applied to all elements)")
+    print(f"Result         : {broadcast_result}")
+
+def main() -> None:
+    """Main execution entry point."""
+    
+    # 1. Define inputs with explicit precision
+    # Scalar: Temperature reading
+    scalar_temp: float = 98.6
+    
+    # Vector: Feature set (e.g., [feature_1, feature_2, feature_3, feature_4])
+    feature_vector: npt.NDArray[DTYPE] = np.array(
+        [2.5, -1.0, 4.7, 0.3], 
+        dtype=DTYPE
+    )
+
+    # 2. execute demonstrations
+    try:
+        demonstrate_scalar(scalar_temp)
+        demonstrate_vector(feature_vector)
+        
+        # 3. Summary
+        print_header("Summary")
+        print("• Scalar : Single value, no shape, minimal overhead.")
+        print("• Vector : Ordered collection, enables SIMD/Broadcasting operations.")
+        print("• Memory : Vectors store data contiguously for CPU cache optimization.")
+        print()
+        
+    except Exception as e:
+        print(f"Critical execution error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
