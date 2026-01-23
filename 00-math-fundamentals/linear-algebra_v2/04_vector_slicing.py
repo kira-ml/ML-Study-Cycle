@@ -1,134 +1,205 @@
+"""
+NumPy Array Slicing: Advanced Operations and Memory Management
+Author: kira-ml
+
+This module demonstrates professional array slicing techniques in NumPy,
+highlighting both syntactic variations and critical memory behavior patterns.
+Essential for scientific computing, data analysis, and machine learning workflows.
+"""
+
 import numpy as np
 
 """
-NumPy Array Slicing Tutorial
-Demonstrates array slicing techniques, syntax variations, and memory behavior.
-Key concepts: slice notation [start:stop:step], view vs. copy behavior.
+OVERVIEW:
+Array slicing provides efficient access to data subsets without full copies.
+Understanding the distinction between views (shared memory) and copies 
+(independent memory) is crucial for performance optimization and data integrity.
 """
 
-# Initialize a sample vector for slicing demonstrations
-# This creates a 1-dimensional array with 7 elements
+# Initialize demonstration array
+# 7-element vector with linear progression for clear indexing visualization
 v = np.array([0, 5, 10, 15, 20, 25, 30])
 
-# Display original array properties
+# Display array metadata
 print(f"Original vector: {v}")
-print(f"Shape of v: {v.shape}")
-print(f"Array length: {len(v)}")
+print(f"Array dimensions: {v.shape}")
+print(f"Element count: {len(v)}")
 print()
 
-# SECTION 1: Basic Slicing Examples
-# ----------------------------------
-# Slicing syntax: array[start:stop:step]
-# - start: inclusive beginning index (default 0)
-# - stop: exclusive ending index (default array length)
-# - step: increment between elements (default 1)
+# ============================================================================
+# SECTION 1: FOUNDATIONAL SLICING SYNTAX
+# ============================================================================
+"""
+SLICE SYNTAX: array[start:stop:step]
+- start: inclusive starting index (default=0)
+- stop: exclusive ending index (default=array length)
+- step: sampling interval (default=1)
+
+Edge cases and defaults demonstrate Python's design philosophy:
+"Explicit is better than implicit, but practicality beats purity."
+"""
 
 print("=" * 60)
-print("SECTION 1: Basic Slicing Operations")
+print("SECTION 1: Fundamental Slicing Patterns")
 print("=" * 60)
 
-# Example 1: Extract first three elements
-# v[0:3] or v[:3] - both yield same result
+# Pattern 1: Prefix extraction
 first_three = v[0:3]
-print(f"1. First three elements (v[0:3]): {first_three}")
-print(f"   Interpretation: indices 0 through 2 (stop index 3 is exclusive)")
-print(f"   Equivalent syntax: v[:3]")
+print(f"1. Prefix slice v[0:3]: {first_three}")
+print(f"   Zero-based indexing: positions 0, 1, 2")
+print(f"   Alternative: v[:3] (implicit start=0)")
 print()
 
-# Example 2: Middle segment extraction
+# Pattern 2: Contiguous subsequence
 middle_section = v[2:5]
-print(f"2. Middle section (v[2:5]): {middle_section}")
-print(f"   Interpretation: indices 2, 3, 4")
-print(f"   Note: Index 5 is exclusive boundary")
+print(f"2. Contiguous slice v[2:5]: {middle_section}")
+print(f"   Mathematical notation: v[2], v[3], v[4]")
+print(f"   Exclusive boundary: index 5 not included")
 print()
 
-# Example 3: Strided extraction with step parameter
+# Pattern 3: Strided sampling
 every_other = v[::2]
-print(f"3. Every other element (v[::2]): {every_other}")
-print(f"   Interpretation: start=0, stop=end, step=2")
-print(f"   Result indices: {[i for i in range(0, len(v), 2)]}")
+print(f"3. Strided slice v[::2]: {every_other}")
+print(f"   Step parameter: select every 2nd element")
+print(f"   Index sequence: {list(range(0, len(v), 2))}")
 print()
 
-# SECTION 2: Advanced Slicing Patterns
-# ------------------------------------
-# Demonstrates negative indexing, reverse stepping, and omission patterns
+# ============================================================================
+# SECTION 2: ADVANCED INDEXING PATTERNS
+# ============================================================================
+"""
+Advanced patterns leverage Python's flexible slicing semantics:
+- Omitted parameters use sensible defaults
+- Negative indices count from array end
+- Negative step enables reverse traversal
+"""
 
 print("=" * 60)
-print("SECTION 2: Advanced Slicing Patterns")
+print("SECTION 2: Advanced Indexing Techniques")
 print("=" * 60)
 
-# From specific index to end (omitted stop parameter)
+# Omission pattern: default to boundaries
 from_index_3 = v[3:]
-print(f"v[3:]  → Elements from index 3 to end: {from_index_3}")
+print(f"v[3:]  → Elements from index 3: {from_index_3}")
 
-# Negative indexing for end-relative slicing
+# End-relative indexing
 last_three = v[-3:]
-print(f"v[-3:] → Last three elements: {last_three}")
+print(f"v[-3:] → Terminal elements: {last_three}")
 
-# Reverse array with negative step
+# Reverse traversal
 reversed_v = v[::-1]
-print(f"v[::-1] → Reversed array: {reversed_v}")
+print(f"v[::-1] → Reversed sequence: {reversed_v}")
 
-# Strided extraction from non-zero start
+# Offset strided sampling
 every_other_from_1 = v[1::2]
-print(f"v[1::2] → Every other element from index 1: {every_other_from_1}")
+print(f"v[1::2] → Alternate elements from index 1: {every_other_from_1}")
 print()
 
-# SECTION 3: Memory Behavior - Views vs. Copies
-# ---------------------------------------------
-# Critical concept: Slicing creates views (shared memory) by default
-# The .copy() method creates independent copies
+# ============================================================================
+# SECTION 3: MEMORY ARCHITECTURE - VIEWS VS. COPIES
+# ============================================================================
+"""
+CRITICAL DISTINCTION:
+- View: Memory-efficient reference to original data (O(1) space)
+- Copy: Independent memory allocation (O(n) space)
+
+Professional applications require conscious choice between these paradigms
+based on mutability requirements and performance constraints.
+"""
 
 print("=" * 60)
-print("SECTION 3: Memory Behavior - Views vs. Copies")
+print("SECTION 3: Memory Management - Views and Copies")
 print("=" * 60)
 
-# Demonstration of view behavior
-print("\nMemory Note: Default slicing creates VIEWS (shared memory)")
-slice_view = v[2:5]  # Creates view into v's memory
-original_value = v[2]  # Store for comparison
-slice_view[0] = 999    # Modify through view
+# View demonstration: shared memory reference
+print("\nVIEW BEHAVIOR (default slicing):")
+slice_view = v[2:5]  # Creates view, not copy
+reference_value = v[2]  # Preserve for comparison
 
-print(f"After slice_view[0] = 999:")
-print(f"  slice_view: {slice_view}")
-print(f"  Original v: {v}")
-print("  Note: Modification through view affects original array")
-print("  Reason: slice_view shares memory with v")
+print(f"Initial state:")
+print(f"  slice_view = {slice_view}")
+print(f"  v = {v}")
 
-# Reset for clarity
-v[2] = original_value
-print(f"\nReset v[2] to original value {original_value}")
+slice_view[0] = 999  # Modification propagates to original
 
-# Demonstration of independent copy behavior
-print("\nCreating independent copy with .copy() method:")
-slice_copy = v[2:5].copy()  # Explicit copy, independent memory
-slice_copy[0] = 888        # Modify copy only
+print(f"\nAfter slice_view[0] = 999:")
+print(f"  slice_view = {slice_view}")
+print(f"  v = {v}")
+print(f"  Observation: View modification alters original array")
+print(f"  Memory efficiency: Shared buffer, no duplication")
 
-print(f"After slice_copy[0] = 888:")
-print(f"  slice_copy: {slice_copy}")
-print(f"  Original v: {v}")
-print("  Note: Copy modifications do not affect original")
-print("  Use .copy() when independent array is required")
+# Restore original state
+v[2] = reference_value
+
+# Copy demonstration: independent memory allocation
+print("\nCOPY BEHAVIOR (explicit duplication):")
+slice_copy = v[2:5].copy()  # Allocate separate memory
+
+print(f"Initial state:")
+print(f"  slice_copy = {slice_copy}")
+print(f"  v = {v}")
+
+slice_copy[0] = 888  # Modification isolated to copy
+
+print(f"\nAfter slice_copy[0] = 888:")
+print(f"  slice_copy = {slice_copy}")
+print(f"  v = {v}")
+print(f"  Observation: Copy modification isolated")
+print(f"  Memory cost: Full duplication of selected elements")
 print()
 
-# SECTION 4: Practical Considerations
-# -----------------------------------
+# ============================================================================
+# SECTION 4: ENGINEERING CONSIDERATIONS
+# ============================================================================
+"""
+PROFESSIONAL GUIDELINES:
+
+View usage recommended when:
+- Operations are read-only
+- Memory constraints exist
+- Real-time data streaming
+
+Copy usage required when:
+- Data integrity must be preserved
+- Concurrent modifications occur
+- Function returns modified subsets
+"""
+
 print("=" * 60)
-print("SECTION 4: Practical Recommendations")
+print("SECTION 4: Engineering Best Practices")
 print("=" * 60)
 
-print("When to use views (default slicing):")
-print("  - Read-only operations")
-print("  - Memory efficiency critical")
-print("  - Temporary data inspection")
+print("\nView-Copy Decision Matrix:")
+print("┌─────────────────┬──────────────────────────────────────┐")
+print("│ Criterion       │ View               │ Copy            │")
+print("├─────────────────┼────────────────────┼─────────────────┤")
+print("│ Memory          │ O(1)               │ O(n)            │")
+print("│ Speed           │ Instant            │ Allocation time │")
+print("│ Mutability      │ Affects original   │ Isolated        │")
+print("│ Use Case        │ Inspection         │ Transformation  │")
+print("└─────────────────┴────────────────────┴─────────────────┘")
+
+print("\nPerformance Characteristics:")
+print("  • Views: Constant time/space complexity")
+print("  • Copies: Linear space complexity")
+
+print("\nImplementation Notes:")
+print("  1. Default slicing creates views (memory efficient)")
+print("  2. Use .copy() method for data isolation")
+print("  3. Large-scale operations require careful memory planning")
 print()
 
-print("When to use copies (.copy() method):")
-print("  - Modifications without affecting original")
-print("  - Data persistence requirements")
-print("  - Function return values")
-print()
+# ============================================================================
+# ADDITIONAL TECHNICAL NOTES
+# ============================================================================
+"""
+NUMERICAL COMPUTING CONTEXT:
 
-print("Performance Note:")
-print("  - Views: O(1) time/space (memory efficient)")
-print("  - Copies: O(n) space (memory intensive for large arrays)")
+NumPy's view-copy distinction stems from its C-based memory model,
+optimized for numerical operations on contiguous memory blocks.
+
+For educational audiences:
+- Views demonstrate pointer semantics in high-level abstraction
+- Copies illustrate defensive programming patterns
+- The trade-off exemplifies computer science's space-time duality
+"""
